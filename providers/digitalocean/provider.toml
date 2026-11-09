@@ -1,0 +1,62 @@
+format = 2
+name = "digitalocean"
+label = "DigitalOcean"
+api = "https://api.digitalocean.com"
+key_env = "DIGITALOCEAN_TOKEN"
+docs = "https://docs.digitalocean.com/reference/api/digitalocean/"
+adapted_by = "claude"
+adapted = "2026-11-08"
+note = """A DigitalOcean droplet (s-1vcpu-1gb, Ubuntu 24.04), reached as root with the public key conch uses, which is put in as the droplet is made. A powered-off droplet is still billed; delete it to stop paying."""
+
+[create]
+call = "POST /v2/droplets"
+# The key goes in through cloud-init: DigitalOcean takes keys by account
+# id or fingerprint only. A droplet made without one gets a root password
+# that has to be changed at the first login, which would stop ssh asking
+# for nothing; expire = false keeps it from doing that.
+body = { name = "{name}", size = "s-1vcpu-1gb", image = "ubuntu-24-04-x64", tags = ["conch"], user_data = """#cloud-config
+ssh_authorized_keys:
+  - {public_key}
+chpasswd:
+  expire: false
+""" }
+id = "droplet.id"
+
+[get]
+call = "GET /v2/droplets/{id}"
+item = "droplet"
+state = "status"
+name = "name"
+cpu = "vcpus"
+memory_mb = "memory"
+created = "created_at"
+
+[list]
+# Up to 200 of conch's droplets, by their tag; DigitalOcean's next page is
+# a whole URL, which a cursor cannot carry.
+call = "GET /v2/droplets?tag_name=conch&per_page=200"
+items = "droplets"
+id = "id"
+mine = "conch-"
+
+[start]
+call = "POST /v2/droplets/{id}/actions"
+body = { type = "power_on" }
+[stop]
+call = "POST /v2/droplets/{id}/actions"
+body = { type = "shutdown" }
+[delete]
+call = "DELETE /v2/droplets/{id}"
+
+[states]
+new = "starting"
+active = "started"
+off = "stopped"
+archive = "gone"
+
+[ssh]
+host = "{reply.droplet.networks.v4[type=public].ip_address}"
+user = "root"
+key = "account"
+[ssh.access]
+call = "GET /v2/droplets/{id}"

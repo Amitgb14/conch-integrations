@@ -1,0 +1,57 @@
+format = 2
+name = "hetzner"
+label = "Hetzner Cloud"
+api = "https://api.hetzner.cloud/v1"
+key_env = "HCLOUD_TOKEN"
+docs = "https://docs.hetzner.cloud/reference/cloud"
+adapted_by = "claude"
+adapted = "2026-11-08"
+note = """A Hetzner Cloud server (cpx22, Ubuntu 24.04), reached as root. Add your public key in the Cloud Console under Security → SSH keys with the name conch before making one: the server is made with that key. A stopped server is still billed; delete it to stop paying."""
+
+[create]
+call = "POST /servers"
+body = { name = "{name}", server_type = "cpx22", image = "ubuntu-24.04", ssh_keys = ["conch"], labels = { conch = "true" } }
+id = "server.id"
+
+[get]
+call = "GET /servers/{id}"
+item = "server"
+state = "status"
+name = "name"
+cpu = "server_type.cores"
+created = "created"
+
+[list]
+call = "GET /servers?label_selector=conch&per_page=50"
+items = "servers"
+id = "id"
+next = "meta.pagination.next_page"
+cursor_param = "page"
+mine = "conch-"
+
+[start]
+call = "POST /servers/{id}/actions/poweron"
+[stop]
+# A clean shutdown, as pressing the power button does.
+call = "POST /servers/{id}/actions/shutdown"
+[delete]
+call = "DELETE /servers/{id}"
+
+[states]
+initializing = "starting"
+starting = "starting"
+running = "started"
+stopping = "stopping"
+off = "stopped"
+deleting = "gone"
+# Moving between hosts or being reinstalled: it comes back running.
+migrating = "starting"
+rebuilding = "starting"
+unknown = "starting"
+
+[ssh]
+host = "{reply.server.public_net.ipv4.ip}"
+user = "root"
+key = "account"
+[ssh.access]
+call = "GET /servers/{id}"

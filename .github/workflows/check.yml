@@ -1,0 +1,40 @@
+name: check
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test the registry script
+        run: python -m unittest discover -s scripts
+      - name: Folders, meta.json, secrets and hosts
+        env:
+          # A provider's file sends everybody's key to its api host, so a
+          # new host is a maintainer's decision, given by this label.
+          ALLOW_HOST_CHANGE: ${{ contains(github.event.pull_request.labels.*.name, 'host-change') }}
+        run: python scripts/registry.py check --base origin/${{ github.base_ref }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: conch's own check of every file
+        run: |
+          go install github.com/Amitgb14/conch/cmd/conch@master
+          export CONCH_HOME="$(mktemp -d)"
+          status=0
+          for f in providers/*/provider.toml; do
+            conch sandbox provider check -offline "$f" || status=1
+          done
+          exit $status
+      - name: The index builds
+        run: python scripts/registry.py build "$(mktemp -d)"
