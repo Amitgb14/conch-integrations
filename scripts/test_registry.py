@@ -78,7 +78,7 @@ class RegistryTest(unittest.TestCase):
     def test_the_file(self):
         for change, want in (
             (('name = "acme"', 'name = "other"'), "the folder is 'acme'"),
-            (("format = 2", "format = 3"), "format 3"),
+            (("format = 2", "format = 4"), "format 4"),
             (("https://api.acme.example", "http://api.acme.example"), "https://"),
             (("https://api.acme.example", "https://localhost"), "not this computer"),
             (("[ssh]", "[ssh"), "provider.toml:"),
@@ -165,6 +165,11 @@ class RegistryTest(unittest.TestCase):
         self.write("gamma", meta={})
         with self.assertRaises(SystemExit):
             registry.build(self.root / "site2")
+
+    def test_format_3(self):
+        # A port read from [ssh.access]'s reply, and headers: conch's format 3.
+        self.write(toml=GOOD.replace("format = 2", "format = 3"))
+        self.assertEqual(self.problems(), "")
 
     def test_a_provider_without_ssh_is_off(self):
         # Its API is described; its [ssh] waits for conch cloud's public URL.
