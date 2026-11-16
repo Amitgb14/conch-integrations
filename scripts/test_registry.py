@@ -571,6 +571,24 @@ class RepositoryTest(unittest.TestCase):
         # Its ssh rides a WebSocket (ssh-sessions, transport direct_ws).
         self.assertEqual((meta.get("enabled"), "ssh" in f), (False, False))
 
+    def test_e2b_keeps_what_it_makes(self):
+        # E2B kills a sandbox when its timeout (15 s by default) runs out
+        # unless autoPause; a paused one is listed only by the v2 list; and
+        # a sandbox has no name of its own, so conch's goes in metadata.
+        f = tomllib.loads((registry.PROVIDERS / "e2b" / "provider.toml").read_text())
+        body = f["create"]["body"]
+        self.assertIs(body["autoPause"], True)
+        self.assertGreaterEqual(body["timeout"], 3600)
+        self.assertEqual((body["metadata"]["name"], f["get"]["name"]), ("{name}", "metadata.name"))
+        self.assertTrue(f["list"]["call"].startswith("GET /v2/sandboxes"))
+        self.assertEqual((f["list"]["items"], f.get("format")), ("[*]", 2))
+        self.assertEqual(set(f["states"]), {"running", "paused"})
+
+    def test_superserve_reads_its_list_from_a_bare_array(self):
+        f = tomllib.loads((registry.PROVIDERS / "superserve" / "provider.toml").read_text())
+        self.assertEqual((f["list"]["items"], f.get("format")), ("[*]", 2))
+        self.assertEqual(set(f["states"]), {"active", "pausing", "paused", "resuming", "migrating", "failed"})
+
     def test_instabox_connects_on_the_port_its_token_names(self):
         # The gateway listens on 2222, not 22: the ssh-token reply's
         # required `port` says which (its `command` drops -p only on 22).

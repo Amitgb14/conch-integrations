@@ -1,0 +1,52 @@
+format = 2
+name = "superserve"
+label = "Superserve"
+api = "https://api.superserve.ai"
+key_env = "SUPERSERVE_API_KEY"
+auth_header = "X-API-Key"
+auth_value = "{key}"
+docs = "https://api.superserve.ai/openapi.yaml"
+adapted_by = "claude"
+adapted = "2026-11-16"
+note = """A Superserve sandbox: a Firecracker microVM from the superserve/base template, or from a snapshot of yours. Make an API key in the Superserve console and put it in SUPERSERVE_API_KEY. A sandbox stays up until it is paused; pausing keeps its memory and disk. Superserve has no ssh: only exec, files and preview ports."""
+
+[create]
+# Only name is required. vCPU, memory and disk are the template's or the
+# snapshot's, never the request's.
+call = "POST /sandboxes"
+body = { name = "{name}", from_snapshot = "{snapshot}", env_vars = "{env}" }
+id = "id"
+
+[get]
+call = "GET /sandboxes/{id}"
+state = "status"
+name = "name"
+cpu = "vcpu_count"
+memory_mb = "memory_mib"
+created = "created_at"
+
+[list]
+# Every sandbox of the team, newest first, as a bare JSON array: with no
+# limit, there is one page.
+call = "GET /sandboxes"
+items = "[*]"
+id = "id"
+mine = "conch-"
+
+[start]
+call = "POST /sandboxes/{id}/resume"
+[stop]
+call = "POST /sandboxes/{id}/pause"
+[delete]
+call = "DELETE /sandboxes/{id}"
+
+[states]
+active = "started"
+pausing = "stopping"
+paused = "stopped"
+resuming = "starting"
+migrating = "starting"   # moving to another host
+failed = "error"
+
+# No [ssh] yet: Superserve has no ssh, only exec, files and preview ports.
+# conch cloud will reach sandboxes through a public URL.
