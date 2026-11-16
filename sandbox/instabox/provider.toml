@@ -63,7 +63,7 @@ error = "error"
 [ssh]
 host = "{reply.host}"
 user = "{reply.token}"
-port = 22               # the token reply also has `port`; the docs show the plain line without -p, i.e. 22
+port = "{reply.port}"   # the gateway is on 2222; the token reply always names its port
 key = "none"
 
 [ssh.access]
