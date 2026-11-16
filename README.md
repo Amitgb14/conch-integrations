@@ -8,8 +8,11 @@ reader of its own; nothing here is code.
 
 | Provider | Name | Live check |
 | --- | --- | --- |
+| Daytona | `daytona` | not yet |
 | DigitalOcean | `digitalocean` | not yet |
 | Hetzner Cloud | `hetzner` | not yet |
+| InstaBox | `instabox` | 2026-11-15 |
+| Tensorlake | `tensorlake` | not yet |
 
 The list as conch reads it is published at
 <https://amitgb14.github.io/conch-sandbox-providers/index.json>.
