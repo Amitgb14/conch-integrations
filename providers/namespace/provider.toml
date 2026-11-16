@@ -1,0 +1,69 @@
+format = 2
+name = "namespace"
+label = "Namespace"
+# Namespace's API is Connect: every call is a POST of JSON to
+# /<package>.<Service>/<Method>. Instances live in the region that made
+# them; this file makes and reaches them in us.
+api = "https://us.compute.namespaceapis.com"
+key_env = "NSC_TOKEN"
+docs = "https://namespace.so/docs/reference/api.md"
+adapted_by = "claude"
+adapted = "2026-11-15"
+note = """A Namespace compute instance (Linux amd64, 2 vCPU / 4 GiB) in the us region, reached as <instance-id>@ssh.us.namespace.so with the public key conch uses, which is enrolled as the instance is made. Make a token with nsc token create (or nsc auth generate-dev-token) and put it in NSC_TOKEN. An instance is released at its deadline, the workspace's default unless your plan says otherwise; suspend keeps its memory and disks."""
+
+[create]
+call = "POST /namespace.cloud.compute.v1beta.ComputeService/CreateInstance"
+# Instances have no name: documentedPurpose, the label the dashboard
+# shows, carries conch's. The reply is a DescribeInstanceResponse.
+body = { documentedPurpose = "{name}", shape = { os = "linux", machineArch = "amd64", virtualCpu = 2, memoryMegabytes = 4096 }, labels = [{ name = "conch", value = "true" }], experimental = { authorizedSshKeys = ["{public_key}"] } }
+id = "metadata.instanceId"
+
+# Connect takes the instance in the body. conch wants {id} in each path,
+# so the query names it too; a Connect server reads only the body of a POST.
+[get]
+call = "POST /namespace.cloud.compute.v1beta.ComputeService/DescribeInstance?instance={id}"
+body = { instanceId = "{id}" }
+item = "metadata"
+state = "status"
+name = "documentedPurpose"
+cpu = "shape.virtualCpu"
+memory_mb = "shape.memoryMegabytes"
+created = "createdAt"
+
+[list]
+# One page of up to 100 (maxEntries is a 64-bit integer, which Connect's
+# JSON writes as a string). The next page's cursor goes back in the body,
+# which a cursor parameter cannot carry. includeCompleteRuns adds the
+# destroyed and failed ones the default leaves out.
+call = "POST /namespace.cloud.compute.v1beta.ComputeService/ListInstances"
+body = { maxEntries = "100", includeCompleteRuns = true }
+items = "instances"
+id = "instanceId"
+mine = "conch-"
+
+[start]
+call = "POST /namespace.cloud.compute.v1beta.ComputeService/WakeInstance?instance={id}"
+body = { instanceId = "{id}" }
+[stop]
+# Suspend: execution stops, memory and disks are snapshotted.
+call = "POST /namespace.cloud.compute.v1beta.ComputeService/SuspendInstance?instance={id}"
+body = { instanceId = "{id}" }
+[delete]
+call = "POST /namespace.cloud.compute.v1beta.ComputeService/DestroyInstance?instance={id}"
+body = { instanceId = "{id}", reason = "deleted by conch" }
+
+[states]
+STATUS_UNKNOWN = "starting"
+PENDING = "starting"
+CREATING = "starting"
+RUNNING = "started"
+SUSPENDING = "stopping"
+SUSPENDED = "stopped"
+DESTROYING = "stopping"
+DESTROYED = "gone"
+ERROR = "error"
+
+[ssh]
+host = "ssh.us.namespace.so"
+user = "{id}"
+key = "account"
