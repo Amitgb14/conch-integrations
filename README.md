@@ -141,6 +141,10 @@ to this repository) with `sandbox/NAME/provider.toml` and a `meta.json`
 saying who adapted it, from which docs, and when your key last listed
 sandboxes with it. Your key is never part of it.
 
+A provider's folder may also hold its icon, `icon.svg` or `icon.png`,
+taken from the provider's own website. conch and the published list draw
+it beside the provider's name.
+
 By hand, a pull request needs the same two files; the format is in
 [conch's guide](https://github.com/Amitgb14/conch/blob/master/internal/sandbox/providerfile.md).
 
@@ -152,8 +156,11 @@ On every pull request:
   where a sandbox provider that is off may lack only its `[ssh]`
 - a sandbox provider's `meta.json` `enabled` agrees with its file: off
   exactly when there is no `[ssh]`
-- the folder holds only `provider.toml`, `meta.json` and an optional
-  `README.md`, and the names agree
+- the folder holds only `provider.toml`, `meta.json`, an optional icon
+  and an optional `README.md`, and the names agree
+- an icon is a plain picture: an SVG with no script, event handler or
+  reference outside the file, or a square PNG at least 64px across; 32 KB
+  at most
 - nothing that looks like a key, token or password is committed
 - a provider already here keeps its API and ssh hosts. A file sends
   everybody's API key to its `api` host, so moving it is a maintainer's
