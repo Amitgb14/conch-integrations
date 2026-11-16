@@ -9,6 +9,20 @@ what it has built in, one folder per kind:
 | `ci/NAME/` | CI services: a branch's runs, a failed job's log, re-runs | `conch integration …`, `conch branch fix-ci` |
 | `tickets/NAME/` | ticket trackers | `conch integration …`, the Tickets view |
 | `notify/NAME/` | notifications | `conch integration …` |
+| `host/NAME/` | code hosts (GitHub, built into conch) | the pull request view |
+
+**The folders are the kinds.** conch lists a kind for each top-level
+folder that holds an integration, in the order and with the names
+[`kinds.json`](kinds.json) gives (a folder it does not name is listed
+under its own name); a conch that has no code for a kind shows it as
+needing a newer conch.
+
+**Every folder has an icon** — `icon.svg` or `icon.png` (square, 64 px or
+more, under 32 KB) — the service's own mark, which conch downloads, checks
+against the index's hash and draws on its card. It may not run anything
+or reach outside the file. The built-ins in [`builtin.json`](builtin.json)
+(GitHub, Linear, Jira…) have a folder under their kind with their icon
+alone. Logos are their owners' trademarks, shown to name the service.
 
 Each is a file describing a service's HTTP API — which call does what,
 where the answer is in the reply, how the key is sent — with a

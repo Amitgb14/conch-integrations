@@ -42,12 +42,16 @@ ROOT = Path(__file__).resolve().parent.parent
 PROVIDERS = ROOT / "sandbox"
 # The integration kinds this registry holds, each a folder of its own.
 KINDS = ("ci", "tickets", "notify")
+# The kinds are the top-level directories (sandbox/, ci/, a new one…);
+# kinds.json names them and says what each is, in the order conch lists
+# them. These are not kinds.
+NOT_KINDS = {"scripts", "legacy", "site"}
 # What conch has built in: listed with the rest so the catalog is one
 # place, but with no file — conch's own code is what runs them.
 BUILTIN = ROOT / "builtin.json"
 BUILTIN_KINDS = {"host", "ci", "tickets", "notify", "sandbox"}
 BUILTIN_KEYS = {"kind", "name", "label", "docs", "note", "key_env"}
-INTEGRATION_FILES = {"integration.toml", "meta.json", "README.md"}
+INTEGRATION_FILES = {"integration.toml", "meta.json", "README.md", "icon.svg", "icon.png"}
 INTEGRATION_META_KEYS = {"version", "adapted_by", "adapted", "docs", "conch", "checked", "revoked"}
 INTEGRATION_CHECKED_KEYS = {"date", "conch", "detail"}
 # What an integration file's operations are, by kind: what conch's
@@ -264,6 +268,7 @@ def check(base=None):
             if old is not None and hosts(old) != hosts(f) and os.environ.get("ALLOW_HOST_CHANGE") != "true":
                 problems.append(f"{folder.name}: moves from {hosts(old)} to {hosts(f)}; a maintainer has to label the pull request host-change")
     problems += load_builtins()[1]
+    problems += load_kinds()[1]
     for kind, folder in integration_folders():
         if not folder.is_dir():
             problems.append(f"{folder.name}: {kind}/ holds a folder per integration")
@@ -338,7 +343,7 @@ def load_builtins():
             continue
         for k in sorted(set(b) - BUILTIN_KEYS):
             problems.append(f"{at}: unknown key {k}")
-        if b.get("kind") not in BUILTIN_KINDS:
+        if b.get("kind") not in BUILTIN_KINDS | set(kind_dirs()):
             problems.append(f"{at}: kind {b.get('kind')!r}: one of {sorted(BUILTIN_KINDS)}")
         if not NAME.match(str(b.get("name", ""))):
             problems.append(f"{at}: name {b.get('name')!r}")
@@ -353,15 +358,89 @@ def load_builtins():
     for b in items:
         if isinstance(b, dict) and b.get("name") in names:
             problems.append(f"builtin.json: {b['name']} is also a file here; a name is one or the other")
+    # A built-in's folder is under its own kind and holds its icon alone.
+    for kind in kind_dirs():
+        for folder in sorted((ROOT / kind).iterdir()):
+            if not builtin_folder(folder):
+                continue
+            b = next((b for b in items if isinstance(b, dict) and b.get("name") == folder.name), {})
+            say = lambda msg: problems.append(f"{kind}/{folder.name}: {msg}")
+            if b.get("kind") != kind:
+                say(f"a built-in of kind {b.get('kind')!r}, so its folder is under {b.get('kind')}/")
+            present = {p.name for p in folder.iterdir()}
+            for extra in sorted(present - {"icon.svg", "icon.png", "README.md"}):
+                say(f"{extra}: a built-in's folder holds only its icon")
+            check_icon(folder, present, say)
     return items, problems
+
+
+def kind_dirs():
+    """The top-level directories that are kinds: each holds a folder per
+    integration (or per sandbox provider)."""
+    def holds(p):
+        return p.is_dir() and ((p / "integration.toml").exists() or (p / "provider.toml").exists() or p.name in builtin_names())
+    return sorted(d.name for d in ROOT.iterdir()
+                  if d.is_dir() and not d.name.startswith(".") and d.name not in NOT_KINDS
+                  and any(holds(p) for p in d.iterdir()))
+
+
+def builtin_names():
+    try:
+        items = json.loads(BUILTIN.read_text())
+    except (OSError, json.JSONDecodeError):
+        return set()
+    return {b.get("name") for b in items if isinstance(b, dict)} if isinstance(items, list) else set()
+
+
+def builtin_folder(folder):
+    """A folder that holds only a built-in's icon: one builtin.json names,
+    with no file of its own."""
+    return folder.name in builtin_names() and not (folder / "integration.toml").exists() \
+        and not (folder / "provider.toml").exists()
 
 
 def integration_folders():
     out = []
-    for kind in KINDS:
+    for kind in kind_dirs():
+        if kind == "sandbox":
+            continue
         d = ROOT / kind
-        if d.is_dir():
-            out += [(kind, p) for p in sorted(d.iterdir()) if not p.name.startswith(".")]
+        out += [(kind, p) for p in sorted(d.iterdir()) if not p.name.startswith(".") and not builtin_folder(p)]
+    return out
+
+
+def load_kinds():
+    """kinds.json, and what is wrong with it."""
+    kinds_file = ROOT / "kinds.json"
+    if not kinds_file.exists():
+        return [], []
+    try:
+        items = json.loads(kinds_file.read_text())
+    except json.JSONDecodeError as e:
+        return [], [f"kinds.json: {e}"]
+    if not isinstance(items, list):
+        return [], ["kinds.json: a list of {kind, label, about}"]
+    problems, seen = [], set()
+    for i, k in enumerate(items):
+        if not isinstance(k, dict) or not NAME.match(str(k.get("kind", ""))) or not k.get("label"):
+            problems.append(f"kinds.json [{i}]: a kind (a directory's name) and a label")
+            continue
+        for extra in sorted(set(k) - {"kind", "label", "about"}):
+            problems.append(f"kinds.json [{i}]: unknown key {extra}")
+        if k["kind"] in seen:
+            problems.append(f"kinds.json: {k['kind']} twice")
+        seen.add(k["kind"])
+    return items, problems
+
+
+def kinds_index():
+    """The kinds as the index lists them: every directory, kinds.json's
+    first in its order, then the rest by name with a label made of it."""
+    named, _ = load_kinds()
+    dirs = kind_dirs()
+    out = [{"kind": k["kind"], "label": k["label"], "about": k.get("about", "")} for k in named if k["kind"] in dirs]
+    have = {k["kind"] for k in out}
+    out += [{"kind": d, "label": d.replace("-", " ").capitalize(), "about": ""} for d in dirs if d not in have]
     return out
 
 
@@ -399,7 +478,8 @@ def load_integration(kind, folder):
         say("the folder's name: lowercase letters, digits and -, starting with a letter")
     present = {p.name for p in folder.iterdir()}
     for extra in sorted(present - INTEGRATION_FILES):
-        say(f"{extra}: only integration.toml, meta.json and README.md belong here")
+        say(f"{extra}: only integration.toml, meta.json, README.md and an icon belong here")
+    check_icon(folder, present, say)
     for need in ("integration.toml", "meta.json"):
         if need not in present:
             say(f"no {need}")
@@ -548,16 +628,19 @@ def build(out):
             e["user_env"] = user_env
         if meta.get("revoked"):
             e["revoked"] = meta["revoked"]
+        serve_icon(out, folder, e)
         entries.append(e)
     builtins, problems = load_builtins()
     if problems:
         raise SystemExit("\n".join(problems))
     for b in builtins:
-        entries.append({"kind": b["kind"], "name": b["name"], "label": b["label"], "builtin": True, "version": 0,
-                        "hosts": {"api": ""}, "tier": "built in", "docs": b["docs"], "note": b.get("note", ""),
-                        "key_env": b.get("key_env", "")})
+        e = {"kind": b["kind"], "name": b["name"], "label": b["label"], "builtin": True, "version": 0,
+             "hosts": {"api": ""}, "tier": "built in", "docs": b["docs"], "note": b.get("note", ""),
+             "key_env": b.get("key_env", "")}
+        serve_icon(out, ROOT / b["kind"] / b["name"], e)
+        entries.append(e)
     entries.sort(key=lambda e: (e["kind"], e["name"]))
-    data = (json.dumps({"format": 2, "entries": entries, "disabled": off}, indent=2) + "\n").encode()
+    data = (json.dumps({"format": 2, "kinds": kinds_index(), "entries": entries, "disabled": off}, indent=2) + "\n").encode()
     (out / "index.json").write_bytes(data)
     (out / "legacy" / "index.json").write_text(json.dumps({"format": 1, "providers": legacy, "disabled": legacy_off}, indent=2) + "\n")
     key = os.environ.get("CONCH_REGISTRY_SIGNING_KEY", "").strip()
@@ -582,6 +665,17 @@ def build(out):
 </table>
 """)
     return entries
+
+
+def serve_icon(out, folder, e):
+    """Puts the folder's icon beside the index, named and hashed in e."""
+    pic = icon(folder) if folder.is_dir() else None
+    if pic:
+        (out / "icons").mkdir(exist_ok=True)
+        data = pic.read_bytes()
+        path = f"icons/{folder.name}{pic.suffix}"
+        (out / path).write_bytes(data)
+        e.update(icon=path, icon_sha256=hashlib.sha256(data).hexdigest())
 
 
 # An ed25519 private key in PKCS #8, around its 32-byte seed: what openssl
