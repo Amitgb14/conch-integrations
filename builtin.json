@@ -1,0 +1,12 @@
+[
+  {"kind": "host", "name": "github", "label": "GitHub", "docs": "https://cli.github.com",
+   "note": "Pull requests, checks, merge, reviews: through gh, signed in with gh auth login."},
+  {"kind": "ci", "name": "github-actions", "label": "GitHub Actions", "docs": "https://docs.github.com/actions",
+   "note": "Failed steps' logs to the branch's agent, re-run failed jobs, the CI panel: through gh."},
+  {"kind": "tickets", "name": "github-issues", "label": "GitHub Issues", "docs": "https://docs.github.com/issues",
+   "note": "Issues to tasks, intake and triage: through gh."},
+  {"kind": "tickets", "name": "linear", "label": "Linear", "docs": "https://linear.app/developers", "key_env": "LINEAR_API_KEY",
+   "note": "Tickets to tasks, comments and links: a personal API key, from Linear's Settings → Security & access."},
+  {"kind": "tickets", "name": "jira", "label": "Jira", "docs": "https://developer.atlassian.com/cloud/jira/platform/rest/v3/", "key_env": "JIRA_API_TOKEN",
+   "note": "Tickets to tasks, comments and links: your Atlassian email and an API token, and your site's address, in config.toml's [trackers.jira]."}
+]

@@ -33,10 +33,21 @@ conch integration install circleci
 
 | Integration | Kind | Live check |
 | --- | --- | --- |
+| Bitbucket Pipelines | ci | not yet |
 | Buildkite | ci | not yet |
 | CircleCI | ci | not yet |
 | GitLab CI | ci | not yet |
 | Jenkins | ci | not yet |
+| Semaphore | ci | not yet |
+| GitLab issues | tickets | not yet |
+| Shortcut | tickets | not yet |
+| Discord | notify | not yet |
+| ntfy | notify | not yet |
+| Slack | notify | not yet |
+
+Built into conch, and listed here (`builtin.json`) so the catalog is one
+place: GitHub, GitHub Actions, GitHub Issues, Linear and Jira. They have no
+file: conch's own code runs them.
 
 An integration's `meta.json` has a `version`, one more with every change
 and never reused, and may list `revoked` versions with the reason; conch

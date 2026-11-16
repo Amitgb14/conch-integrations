@@ -34,6 +34,11 @@ ROOT = Path(__file__).resolve().parent.parent
 PROVIDERS = ROOT / "sandbox"
 # The integration kinds this registry holds, each a folder of its own.
 KINDS = ("ci", "tickets", "notify")
+# What conch has built in: listed with the rest so the catalog is one
+# place, but with no file — conch's own code is what runs them.
+BUILTIN = ROOT / "builtin.json"
+BUILTIN_KINDS = {"host", "ci", "tickets", "notify", "sandbox"}
+BUILTIN_KEYS = {"kind", "name", "label", "docs", "note", "key_env"}
 INTEGRATION_FILES = {"integration.toml", "meta.json", "README.md"}
 INTEGRATION_META_KEYS = {"version", "adapted_by", "adapted", "docs", "conch", "checked", "revoked"}
 INTEGRATION_CHECKED_KEYS = {"date", "conch", "detail"}
@@ -182,6 +187,7 @@ def check(base=None):
             old = at_base(base, folder.name)
             if old is not None and hosts(old) != hosts(f) and os.environ.get("ALLOW_HOST_CHANGE") != "true":
                 problems.append(f"{folder.name}: moves from {hosts(old)} to {hosts(f)}; a maintainer has to label the pull request host-change")
+    problems += load_builtins()[1]
     for kind, folder in integration_folders():
         if not folder.is_dir():
             problems.append(f"{folder.name}: {kind}/ holds a folder per integration")
@@ -193,6 +199,43 @@ def check(base=None):
             if old is not None and integration_hosts(old) != integration_hosts(f) and os.environ.get("ALLOW_HOST_CHANGE") != "true":
                 problems.append(f"{kind}/{folder.name}: moves from {integration_hosts(old)} to {integration_hosts(f)}; a maintainer has to label the pull request host-change")
     return problems
+
+
+def load_builtins():
+    """builtin.json's entries, and what is wrong with them."""
+    if not BUILTIN.exists():
+        return [], []
+    problems = []
+    try:
+        items = json.loads(BUILTIN.read_text())
+    except json.JSONDecodeError as e:
+        return [], [f"builtin.json: {e}"]
+    if not isinstance(items, list):
+        return [], ["builtin.json: a list"]
+    seen = set()
+    for i, b in enumerate(items):
+        at = f"builtin.json [{i}]"
+        if not isinstance(b, dict):
+            problems.append(f"{at}: an object")
+            continue
+        for k in sorted(set(b) - BUILTIN_KEYS):
+            problems.append(f"{at}: unknown key {k}")
+        if b.get("kind") not in BUILTIN_KINDS:
+            problems.append(f"{at}: kind {b.get('kind')!r}: one of {sorted(BUILTIN_KINDS)}")
+        if not NAME.match(str(b.get("name", ""))):
+            problems.append(f"{at}: name {b.get('name')!r}")
+        elif b["name"] in seen:
+            problems.append(f"{at}: {b['name']} twice")
+        seen.add(b.get("name"))
+        if not b.get("label"):
+            problems.append(f"{at}: no label")
+        if urlparse(str(b.get("docs", ""))).scheme != "https":
+            problems.append(f"{at}: docs: an https:// URL")
+    names = {f.name for f in folders()} | {f.name for _, f in integration_folders()}
+    for b in items:
+        if isinstance(b, dict) and b.get("name") in names:
+            problems.append(f"builtin.json: {b['name']} is also a file here; a name is one or the other")
+    return items, problems
 
 
 def integration_folders():
@@ -370,6 +413,13 @@ def build(out):
         if meta.get("revoked"):
             e["revoked"] = meta["revoked"]
         entries.append(e)
+    builtins, problems = load_builtins()
+    if problems:
+        raise SystemExit("\n".join(problems))
+    for b in builtins:
+        entries.append({"kind": b["kind"], "name": b["name"], "label": b["label"], "builtin": True, "version": 0,
+                        "hosts": {"api": ""}, "tier": "built in", "docs": b["docs"], "note": b.get("note", ""),
+                        "key_env": b.get("key_env", "")})
     entries.sort(key=lambda e: (e["kind"], e["name"]))
     data = (json.dumps({"format": 2, "entries": entries}, indent=2) + "\n").encode()
     (out / "index.json").write_bytes(data)
@@ -379,7 +429,7 @@ def build(out):
         (out / "index.json.sig").write_text(sign(key, data) + "\n")
     rows = "\n".join(
         f"<tr><td>{html.escape(e['label'])}</td><td>{html.escape(e['kind'])}</td><td><code>{html.escape(e['name'])}</code></td>"
-        f"<td>{html.escape(e['hosts']['api'] or 'your own server')}</td><td>{'checked ' + e['checked']['date'] if e.get('checked') else 'not checked live yet'}</td></tr>"
+        f"<td>{html.escape('built into conch' if e.get('builtin') else (e['hosts']['api'] or 'your own server'))}</td><td>{'checked ' + e['checked']['date'] if e.get('checked') else 'not checked live yet'}</td></tr>"
         for e in entries)
     (out / "index.html").write_text(f"""<!DOCTYPE html>
 <meta charset="utf-8"><title>conch integrations</title>
