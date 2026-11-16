@@ -31,7 +31,8 @@ class RegistryTest(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
         self.providers = self.root / "sandbox"
-        for patch in (mock.patch.object(registry, "ROOT", self.root), mock.patch.object(registry, "PROVIDERS", self.providers)):
+        for patch in (mock.patch.object(registry, "ROOT", self.root), mock.patch.object(registry, "PROVIDERS", self.providers),
+                      mock.patch.object(registry, "BUILTIN", self.root / "builtin.json")):
             patch.start()
             self.addCleanup(patch.stop)
 
@@ -198,7 +199,8 @@ class IntegrationTest(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
-        for patch in (mock.patch.object(registry, "ROOT", self.root), mock.patch.object(registry, "PROVIDERS", self.root / "sandbox")):
+        for patch in (mock.patch.object(registry, "ROOT", self.root), mock.patch.object(registry, "PROVIDERS", self.root / "sandbox"),
+                      mock.patch.object(registry, "BUILTIN", self.root / "builtin.json")):
             patch.start()
             self.addCleanup(patch.stop)
 
@@ -273,6 +275,31 @@ class IntegrationTest(unittest.TestCase):
         self.write("bad-ci", meta={})
         with self.assertRaises(SystemExit):
             registry.build(self.root / "site2")
+
+    def test_builtins(self):
+        self.write()
+        (self.root / "builtin.json").write_text(json.dumps([
+            {"kind": "tickets", "name": "jira", "label": "Jira", "docs": "https://developer.atlassian.com", "key_env": "JIRA_API_TOKEN"},
+            {"kind": "host", "name": "github", "label": "GitHub", "docs": "https://cli.github.com"}]))
+        self.assertEqual(self.problems(), "")
+        registry.build(self.root / "site")
+        by = {e["name"]: e for e in json.loads((self.root / "site" / "index.json").read_text())["entries"]}
+        self.assertEqual((by["jira"]["builtin"], by["jira"]["kind"], by["jira"]["tier"], by["jira"]["key_env"]), (True, "tickets", "built in", "JIRA_API_TOKEN"))
+        self.assertNotIn("file", by["jira"])
+        self.assertIn("built into conch", (self.root / "site" / "index.html").read_text())
+        for items, want in (
+            ([{"kind": "repo", "name": "x1", "label": "X", "docs": "https://x"}], "kind 'repo'"),
+            ([{"kind": "host", "name": "acme-ci", "label": "X", "docs": "https://x"}], "also a file here"),
+            ([{"kind": "host", "name": "gh", "label": "X", "docs": "https://x", "file": "x"}], "unknown key file"),
+            ([{"kind": "host", "name": "gh", "label": "X", "docs": "http://x"}], "docs: an https"),
+            ([{"kind": "host", "name": "gh", "label": "X", "docs": "https://x"}] * 2, "gh twice"),
+            ({}, "a list"),
+        ):
+            with self.subTest(want=want):
+                (self.root / "builtin.json").write_text(json.dumps(items))
+                self.assertIn(want, self.problems())
+        (self.root / "builtin.json").write_text("[")
+        self.assertIn("builtin.json:", self.problems())
 
     def test_signing(self):
         import base64
