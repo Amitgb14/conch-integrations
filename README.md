@@ -72,6 +72,7 @@ stops using a revoked version and says why.
 | Provider | Name | Live check |
 | --- | --- | --- |
 | Agent37 | `agent37` | off: no ssh yet |
+| Amika | `amika` | off: no ssh yet |
 | Archil | `archil` | off: no ssh yet |
 | boat.dev | `boat` | not yet |
 | briq | `briq` | off: no ssh yet |

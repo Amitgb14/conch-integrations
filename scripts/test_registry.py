@@ -561,6 +561,16 @@ class RepositoryTest(unittest.TestCase):
             self.assertIn(f[call].get("headers", {}).get("Idempotency-Key", top), (None, ""), call)
         self.assertEqual(f["delete"]["headers"]["X-Confirm-Delete"], "{id}")
 
+    def test_amika_reads_its_list_from_a_bare_array(self):
+        # GET /rigs answers a JSON array, not an object holding one. "[*]"
+        # is every item of a reply that is a list (conch's Pick); "." would
+        # pick nothing, and conch would see no rigs at all.
+        f = tomllib.loads((registry.PROVIDERS / "amika" / "provider.toml").read_text())
+        self.assertEqual((f["list"]["items"], f.get("format")), ("[*]", 2))
+        meta = json.loads((registry.PROVIDERS / "amika" / "meta.json").read_text())
+        # Its ssh rides a WebSocket (ssh-sessions, transport direct_ws).
+        self.assertEqual((meta.get("enabled"), "ssh" in f), (False, False))
+
     def test_instabox_connects_on_the_port_its_token_names(self):
         # The gateway listens on 2222, not 22: the ssh-token reply's
         # required `port` says which (its `command` drops -p only on 22).
