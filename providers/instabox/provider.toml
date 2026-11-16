@@ -1,0 +1,63 @@
+name = "instabox"
+label = "InstaBox"
+api = "https://api.instabox.sh"
+key_env = "INSTABOX_API_KEY"
+auth_header = "X-API-Key"
+auth_value = "{key}"
+docs = "https://instabox.sh/docs/api-reference/introduction.md"
+adapted_by = "claude"
+adapted = "2026-11-15"
+note = "Create, start, stop and delete need an Idempotency-Key header, and delete also needs X-Confirm-Delete with the machine's ID or name (API keys made after the rollout get 409 delete_confirmation_required without it). Each change answers 202 with an operation; the machine's state moves on its own. SSH goes through the instabox gateway with a per-connection token (ssh-tokens), so no key needs registering. Free plan: 1 machine, size 4 vCPU / 8 GiB only, idle pause fixed at 30 min."
+
+[create]
+call = "POST /v1/machines"
+# The reply is an operation; its machineId is the new sandbox.
+body = { name = "{name}", vcpus = "{cpu}", memMiB = "{memory_mb}", snapshotId = "{snapshot}", env = "{env}", autoSuspendAfterSeconds = "{auto_stop_secs}" }
+id = "machineId"
+
+[get]
+call = "GET /v1/machines/{id}"
+state = "state"
+name = "name"
+reason = "lastError.message"
+cpu = "spec.vcpus"
+memory_mb = "spec.memMiB"
+created = "createdAt"
+
+[list]
+call = "GET /v1/machines"
+items = "machines"
+id = "id"
+next = "nextCursor"
+cursor_param = "cursor"
+mine = "conch-"
+
+[start]
+call = "POST /v1/machines/{id}/start"
+[stop]
+call = "POST /v1/machines/{id}/stop"
+[delete]
+call = "DELETE /v1/machines/{id}"
+
+[states]
+creating = "starting"
+starting = "starting"
+running = "started"
+stopping = "stopping"
+stopped = "stopped"
+suspending = "stopping"   # pause: memory kept, not running; start resumes it
+suspended = "stopped"
+resuming = "starting"
+deleting = "stopping"
+deleted = "gone"
+error = "error"
+
+[ssh]
+host = "{reply.host}"
+user = "{reply.token}"
+port = 22               # the token reply also has `port`; the docs show the plain line without -p, i.e. 22
+key = "none"
+
+[ssh.access]
+call = "POST /v1/machines/{id}/ssh-tokens"
+body = { name = "conch", ttlSeconds = 3600 }

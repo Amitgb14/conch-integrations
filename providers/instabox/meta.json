@@ -1,0 +1,11 @@
+{
+  "adapted_by": "claude",
+  "adapted": "2026-11-15",
+  "docs": "https://instabox.sh/docs/api-reference/introduction.md",
+  "conch": "0.2.1",
+  "checked": {
+    "date": "2026-11-15",
+    "conch": "0.2.1",
+    "sandboxes": 0
+  }
+}
