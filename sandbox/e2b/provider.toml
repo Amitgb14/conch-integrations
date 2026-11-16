@@ -1,0 +1,54 @@
+format = 2
+name = "e2b"
+label = "E2B"
+api = "https://api.e2b.app"
+key_env = "E2B_API_KEY"
+auth_header = "X-API-Key"
+auth_value = "{key}"
+docs = "https://docs.e2b.dev/openapi-public.yaml"
+adapted_by = "claude"
+adapted = "2026-11-16"
+note = """An E2B sandbox from the base template. Make an API key at e2b.dev/dashboard → API Keys and put it in E2B_API_KEY. A sandbox runs for an hour at a time and then pauses, keeping its memory and disk, until it is resumed. E2B has no plain ssh: its ssh goes through a websocket proxy."""
+
+[create]
+# templateID is required, and a file cannot fall back to a default when
+# {snapshot} is empty, so every sandbox starts from base. timeout is
+# seconds; E2B kills a sandbox when it runs out unless autoPause, so it
+# pauses instead. A sandbox has no name: conch's is kept in metadata.
+call = "POST /sandboxes"
+body = { templateID = "base", timeout = 3600, autoPause = true, metadata = { name = "{name}", made_by = "conch" }, envVars = "{env}" }
+id = "sandboxID"
+
+[get]
+call = "GET /sandboxes/{id}"
+state = "state"
+name = "metadata.name"
+cpu = "cpuCount"
+memory_mb = "memoryMB"
+disk_mb = "diskSizeMB"
+created = "startedAt"
+
+[list]
+# The v2 list holds paused sandboxes too (v1 only running ones). Its next
+# page's token is in a header, which a file cannot read, so this is the
+# newest 100 that conch made, a bare JSON array.
+call = "GET /v2/sandboxes?limit=100&metadata=made_by%3Dconch"
+items = "[*]"
+id = "sandboxID"
+mine = "conch-"
+
+[start]
+# Resumes a paused sandbox, for another hour.
+call = "POST /v2/sandboxes/{id}/connect"
+body = { timeout = 3600 }
+[stop]
+call = "POST /sandboxes/{id}/pause"
+[delete]
+call = "DELETE /sandboxes/{id}"
+
+[states]
+running = "started"
+paused = "stopped"
+
+# No [ssh] yet: E2B's ssh goes through a websocket proxy, which plain ssh
+# cannot dial. conch cloud will reach sandboxes through a public URL.

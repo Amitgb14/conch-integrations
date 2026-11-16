@@ -79,6 +79,7 @@ stops using a revoked version and says why.
 | CreateOS | `createos` | off: no ssh yet |
 | Daytona | `daytona` | not yet |
 | DigitalOcean | `digitalocean` | not yet |
+| E2B | `e2b` | off: no ssh yet |
 | Freestyle | `freestyle` | off: no ssh yet |
 | Gravix Layer | `gravixlayer` | off: no ssh yet |
 | Hetzner Cloud | `hetzner` | not yet |
@@ -89,6 +90,7 @@ stops using a revoked version and says why.
 | Mosaic Sandbox | `mosaic` | not yet |
 | Namespace | `namespace` | not yet |
 | Promigence | `promigence` | off: no ssh yet |
+| Superserve | `superserve` | off: no ssh yet |
 | Tensorlake | `tensorlake` | not yet |
 | Uno | `uno` | off: no ssh yet |
 
@@ -114,7 +116,6 @@ only plain ssh, it is listed off. These, from the
 
 | Provider | What stops it |
 | --- | --- |
-| E2B | its list is a bare JSON array, which `[list] items` cannot name; ssh only through a websocket proxy |
 | Novita | no documented HTTP API; ssh only through a websocket proxy, as E2B |
 | Modal | no HTTP API: its SDKs and CLI only |
 | Vercel Sandbox | stop takes a session id, every other call the sandbox's name; no ssh |
@@ -122,9 +123,8 @@ only plain ssh, it is listed off. These, from the
 | Beam | its VMs take ssh, but are made only through its CLI and SDK |
 | CodeSandbox | a sandbox has no state field; no ssh, only a websocket agent |
 | Cloudflare Sandbox | no hosted API: it is a Workers binding, with no ssh |
-| Upstash Box | ssh fits, but the HTTP API is undocumented and its list is a bare array |
+| Upstash Box | ssh fits, but the HTTP API is undocumented |
 | Isorun | a run takes no name, and its list is undocumented; no ssh |
-| Superserve | its list is a bare JSON array; no ssh, only exec, files and preview ports |
 | Arker | no stop or start call: a VM only idles; its ssh would otherwise fit |
 | Buddy Works | every path holds the person's workspace, which a shared file cannot; its ssh would otherwise fit (format 3) |
 | Sail | create needs the organisation's app_id, fetched by another call; ssh by short-lived certificate |
