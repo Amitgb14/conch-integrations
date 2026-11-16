@@ -16,6 +16,29 @@ reader of its own; nothing here is code.
 The list as conch reads it is published at
 <https://amitgb14.github.io/conch-sandbox-providers/index.json>.
 
+## Looked at, and why they are not here
+
+conch reaches every sandbox over plain ssh and drives it through an HTTP
+API, so a provider needs both. These, from the
+[ComputeSDK sandbox ratings](https://www.computesdk.com/benchmarks/sandboxes/ratings)
+(November 2026), have not got them yet. Daytona and Tensorlake are not
+listed because conch has them built in.
+
+| Provider | What stops it |
+| --- | --- |
+| E2B | ssh only through a websocket proxy (websocat ProxyCommand) |
+| Novita | no documented HTTP API; ssh only through a websocket proxy, as E2B |
+| Modal | no HTTP API: its SDKs and CLI only |
+| Vercel Sandbox | no ssh: `sandbox ssh` is the CLI's own shell, ports are HTTPS only |
+| Blaxel | no ssh: ports are HTTPS only, ssh only through your own Tailscale |
+| Beam | its VMs take ssh, but are made only through its CLI and SDK |
+| CodeSandbox | no ssh: a VM is reached through a websocket agent |
+| Cloudflare Sandbox | no hosted API: it is a Workers binding, with no ssh |
+| Freestyle | ssh takes a token made in three calls on an identity, which one access call cannot do |
+| Upstash Box | ssh fits, but the HTTP API is undocumented and its list is a bare array |
+| Isorun | no ssh: websocket shells only, and a run takes no name |
+| Superserve | no ssh: exec, files and preview ports only |
+
 ## Using one
 
 ```sh
