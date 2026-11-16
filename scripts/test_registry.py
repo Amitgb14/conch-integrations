@@ -561,6 +561,12 @@ class RepositoryTest(unittest.TestCase):
             self.assertIn(f[call].get("headers", {}).get("Idempotency-Key", top), (None, ""), call)
         self.assertEqual(f["delete"]["headers"]["X-Confirm-Delete"], "{id}")
 
+    def test_instabox_connects_on_the_port_its_token_names(self):
+        # The gateway listens on 2222, not 22: the ssh-token reply's
+        # required `port` says which (its `command` drops -p only on 22).
+        f = tomllib.loads((registry.PROVIDERS / "instabox" / "provider.toml").read_text())
+        self.assertEqual(f["ssh"]["port"], "{reply.port}")
+
     def test_every_provider_here_has_its_icon(self):
         for folder in registry.folders():
             self.assertTrue({"icon.svg", "icon.png"} & {p.name for p in folder.iterdir()}, folder.name)
