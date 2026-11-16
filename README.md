@@ -74,6 +74,7 @@ stops using a revoked version and says why.
 | Agent37 | `agent37` | off: no ssh yet |
 | Amika | `amika` | off: no ssh yet |
 | Archil | `archil` | off: no ssh yet |
+| Blaxel | `blaxel` | off: no ssh yet |
 | boat.dev | `boat` | not yet |
 | briq | `briq` | off: no ssh yet |
 | CreateOS | `createos` | off: no ssh yet |
@@ -116,21 +117,20 @@ only plain ssh, it is listed off. These, from the
 
 | Provider | What stops it |
 | --- | --- |
-| Novita | no documented HTTP API; ssh only through a websocket proxy, as E2B |
-| Modal | no HTTP API: its SDKs and CLI only |
+| Novita | no documented HTTP API for its sandboxes (SDK and CLI only); ssh only through a websocket proxy, as E2B |
+| Modal | no HTTP API: its SDKs and CLI only; and a finished sandbox cannot be started again |
 | Vercel Sandbox | stop takes a session id, every other call the sandbox's name; no ssh |
-| Blaxel | standby and resume are called on each sandbox's own host, not the API's; no ssh |
-| Beam | its VMs take ssh, but are made only through its CLI and SDK |
+| Beam | its VMs take ssh, but are made only through its CLI, SDK and dashboard; its HTTP API has pods, with no start and no ssh |
 | CodeSandbox | a sandbox has no state field; no ssh, only a websocket agent |
-| Cloudflare Sandbox | no hosted API: it is a Workers binding, with no ssh |
+| Cloudflare Sandbox | no hosted API: a Workers binding, or a bridge Worker in your own account (no list, start or stop); no ssh |
 | Upstash Box | ssh fits, but the HTTP API is undocumented |
-| Isorun | a run takes no name, and its list is undocumented; no ssh |
+| Isorun | a run takes no name or label, and its list's reply is undocumented; no ssh |
 | Arker | no stop or start call: a VM only idles; its ssh would otherwise fit |
 | Buddy Works | every path holds the person's workspace, which a shared file cannot; its ssh would otherwise fit (format 3) |
-| Sail | create needs the organisation's app_id, fetched by another call; ssh by short-lived certificate |
+| Sail (Sail Research) | create needs the organisation's app_id, looked up on another host; ssh by short-lived certificate |
 | Sandbox0 | a sandbox has no name, label or metadata to find conch's by; its ssh gateway would fit |
-| Tenki | no documented HTTP API (Connect calls only in its SDK's code); ssh through its CLI |
-| SFCompute | GPU instances on bought capacity: pool, image and sku per account, and terminate is final |
+| Tenki (Luxor Agent Cloud) | no HTTP API: SDKs over Connect/gRPC, with the id in the body; ssh through its CLI |
+| SFCompute | GPU instances on bought capacity: pool, image and sku per account; no stop or start, and terminate is final |
 | Google Cloud Run | no API: sandboxes are started inside your own Cloud Run container |
 
 ### Using one
