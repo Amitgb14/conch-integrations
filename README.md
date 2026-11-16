@@ -18,6 +18,7 @@ reader of its own; nothing here is code.
 | InstaBox | `instabox` | checked 2026-11-15 |
 | kosa8 Cloud | `kosa8` | off: no ssh yet |
 | Microsandbox | `microsandbox` | off: no ssh yet |
+| MIOSA | `miosa` | off: no ssh yet |
 | Namespace | `namespace` | not yet |
 
 The list as conch reads it is published at

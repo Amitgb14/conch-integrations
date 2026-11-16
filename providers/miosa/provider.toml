@@ -1,0 +1,55 @@
+name = "miosa"
+label = "MIOSA"
+api = "https://api.miosa.ai/api/v1"
+key_env = "MIOSA_API_KEY"
+docs = "https://miosa.ai/docs/api-reference/sandboxes.md"
+adapted_by = "claude"
+adapted = "2026-11-15"
+note = """A MIOSA sandbox: a persistent Firecracker microVM, size small (2 vCPU, 4 GiB, 10 GiB disk). Put an API key (msk_...) in MIOSA_API_KEY. It pauses after timeout_sec (default 3600) and, on newer accounts, after 30 idle minutes. MIOSA has no plain ssh: ssh goes through its CLI's authenticated tunnel."""
+
+[create]
+call = "POST /sandboxes"
+# The create request has no name field (the sandbox's own name is
+# optional and not settable here), so conch's name goes into metadata.
+# cpu/memory/disk must match a published size together, so they are left
+# to the default size. The OpenAPI spec answers with the bare Sandbox
+# object; the API overview page shows a {"data": ...} envelope instead.
+body = { metadata = { conch_name = "{name}" }, template_id = "{snapshot}", env = "{env}" }
+id = "id"
+
+[get]
+call = "GET /sandboxes/{id}"
+state = "state"
+name = "metadata.conch_name"
+cpu = "cpu_count"
+memory_mb = "memory_mb"
+disk_mb = "disk_size_mb"
+created = "created_at"
+
+[list]
+# page/page_size paging; one page of the maximum 100.
+call = "GET /sandboxes?page_size=100"
+items = "data"
+id = "id"
+mine = "conch-"
+
+[start]
+call = "POST /sandboxes/{id}/resume"
+[stop]
+call = "POST /sandboxes/{id}/pause"
+[delete]
+call = "DELETE /sandboxes/{id}"
+
+[states]
+provisioning = "starting"   # the docs' name
+creating = "starting"       # the OpenAPI spec's name
+running = "started"
+paused = "stopped"
+stopped = "stopped"
+error = "error"
+destroyed = "gone"
+
+# [ssh]
+# No plain ssh yet: ssh goes only through MIOSA's CLI tunnel.
+# conch cloud will reach it through a public URL; until then this provider is
+# off (meta.json "enabled": false).
