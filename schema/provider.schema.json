@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amitgb14.github.io/conch-integrations/schema/provider.schema.json",
+  "title": "conch sandbox provider file",
+  "description": "sandbox/NAME/provider.toml: how conch drives a sandbox provider's HTTP API. The format is conch's internal/sandbox/providerfile.md; conch sandbox provider check -offline is the final word.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "api", "create", "get", "list", "delete", "states"],
+  "properties": {
+    "format": {"enum": [1, 2, 3, 4], "description": "1 when absent. 2: [get] item, {public_key}, selectors. 3: headers, a port from the reply. 4: settings, sizes, lifetime, snapshots, preview, usage."},
+    "name": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,30}$", "description": "The folder's name."},
+    "label": {"type": "string", "minLength": 1},
+    "api": {"type": "string", "pattern": "^https://[^/]+", "description": "Every call goes here, with the key."},
+    "key_env": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]*$"},
+    "auth_header": {"type": "string", "minLength": 1, "description": "Default Authorization."},
+    "auth_value": {"type": "string", "pattern": "\\{key\\}", "description": "Default \"Bearer {key}\"."},
+    "docs": {"type": "string", "pattern": "^https://"},
+    "adapted_by": {"type": "string", "minLength": 1},
+    "adapted": {"$ref": "#/$defs/date"},
+    "note": {"type": "string"},
+    "headers": {"$ref": "#/$defs/headers"},
+    "create": {"$ref": "#/$defs/call", "unevaluatedProperties": false, "required": ["call", "id"],
+               "properties": {"id": {"$ref": "#/$defs/path"}}},
+    "get": {"$ref": "#/$defs/call", "unevaluatedProperties": false, "required": ["call", "state", "name"],
+            "allOf": [{"$ref": "#/$defs/fields"}]},
+    "list": {"$ref": "#/$defs/call", "unevaluatedProperties": false, "required": ["call", "items", "id"],
+             "allOf": [{"$ref": "#/$defs/fields"}],
+             "properties": {"items": {"$ref": "#/$defs/path"}, "id": {"$ref": "#/$defs/path"},
+                            "next": {"$ref": "#/$defs/path"}, "cursor_param": {"type": "string"},
+                            "mine": {"type": "string"}, "all_mine": {"type": "boolean"}}},
+    "start": {"$ref": "#/$defs/call", "unevaluatedProperties": false},
+    "stop": {"$ref": "#/$defs/call", "unevaluatedProperties": false},
+    "delete": {"$ref": "#/$defs/call", "unevaluatedProperties": false},
+    "states": {"type": "object", "minProperties": 1, "description": "Each state the provider documents → conch's.",
+               "additionalProperties": {"enum": ["starting", "started", "stopping", "stopped", "error", "gone"]}},
+    "ssh": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "host": {"type": "string", "description": "May use {id} {name}, or {reply.PATH} after [ssh.access]."},
+        "user": {"type": "string"},
+        "port": {"oneOf": [{"type": "integer", "minimum": 0, "maximum": 65535},
+                           {"type": "string", "pattern": "^\\{reply\\.[^}]+\\}$"}]},
+        "endpoint": {"type": "string", "description": "host:port from [ssh.access]'s reply (format 4)."},
+        "wait_secs": {"type": "integer", "minimum": 0},
+        "command": {"type": "string"},
+        "key": {"enum": ["account", "authorize", "none"]},
+        "access": {"$ref": "#/$defs/call", "unevaluatedProperties": false},
+        "authorize": {"$ref": "#/$defs/call", "unevaluatedProperties": false}
+      }
+    },
+    "setting": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["key", "label"],
+        "properties": {
+          "key": {"enum": ["region", "image", "template"]},
+          "label": {"type": "string"},
+          "help": {"type": "string"},
+          "choices": {"type": "array", "items": {"type": "string"}},
+          "choices_call": {"$ref": "#/$defs/method"},
+          "items": {"$ref": "#/$defs/path"},
+          "value": {"$ref": "#/$defs/path"},
+          "name": {"$ref": "#/$defs/path"},
+          "free": {"type": "boolean"},
+          "default": {"type": "string"}
+        }
+      }
+    },
+    "size": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "names": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "cpu": {"$ref": "#/$defs/range"},
+        "memory_gib": {"$ref": "#/$defs/range"},
+        "disk_gib": {"$ref": "#/$defs/range"},
+        "choices": {"$ref": "#/$defs/call", "unevaluatedProperties": false,
+                    "properties": {"items": {"$ref": "#/$defs/path"}, "cpu": {"$ref": "#/$defs/path"},
+                                   "memory_mb": {"$ref": "#/$defs/path"}, "memory_gib": {"$ref": "#/$defs/path"},
+                                   "disk_mb": {"$ref": "#/$defs/path"}, "disk_gib": {"$ref": "#/$defs/path"},
+                                   "name": {"$ref": "#/$defs/path"}}}
+      }
+    },
+    "lifetime": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"default_mins": {"type": "integer", "minimum": 1}, "max_mins": {"type": "integer", "minimum": 1}}
+    },
+    "snapshot": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "save": {"$ref": "#/$defs/call", "unevaluatedProperties": false},
+        "list": {"$ref": "#/$defs/call", "unevaluatedProperties": false,
+                 "properties": {"items": {"$ref": "#/$defs/path"}, "name": {"$ref": "#/$defs/path"},
+                                "state": {"$ref": "#/$defs/path"}, "created": {"$ref": "#/$defs/path"},
+                                "size": {"type": "string"}}},
+        "forget": {"$ref": "#/$defs/call", "unevaluatedProperties": false}
+      }
+    },
+    "preview": {
+      "$ref": "#/$defs/call", "unevaluatedProperties": false,
+      "properties": {"url": {"$ref": "#/$defs/path"}, "max_secs": {"type": "integer", "minimum": 1},
+                     "reserved": {"type": "object", "propertyNames": {"pattern": "^[0-9]+$"},
+                                  "additionalProperties": {"type": "string"}}}
+    },
+    "usage": {
+      "$ref": "#/$defs/call", "unevaluatedProperties": false,
+      "properties": {"cost": {"$ref": "#/$defs/path"}, "seconds": {"$ref": "#/$defs/path"},
+                     "items": {"$ref": "#/$defs/path"}, "from": {"$ref": "#/$defs/path"},
+                     "to": {"$ref": "#/$defs/path"}, "cpu": {"$ref": "#/$defs/path"},
+                     "memory_gib": {"$ref": "#/$defs/path"}}
+    }
+  },
+  "allOf": [
+    {"if": {"properties": {"format": {"enum": [1, 2]}}, "required": ["format"]},
+     "then": {"not": {"required": ["headers"]}}}
+  ],
+  "$defs": {
+    "date": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+    "path": {"type": "string", "description": "A dotted path into the reply: data.state, items.0.id."},
+    "method": {"type": "string", "pattern": "^(GET|POST|PUT|PATCH|DELETE) /"},
+    "headers": {"type": "object", "additionalProperties": {"type": "string"},
+                "description": "Format 3: sent with the call; \"\" leaves out one set at the top."},
+    "range": {"type": "array", "items": {"type": "number", "minimum": 0}, "minItems": 2, "maxItems": 2},
+    "call": {
+      "type": "object", "required": ["call"],
+      "properties": {
+        "call": {"$ref": "#/$defs/method"},
+        "body": {"type": "object", "description": "Sent as JSON; a string that is exactly one placeholder takes that value's type."},
+        "headers": {"$ref": "#/$defs/headers"}
+      }
+    },
+    "fields": {
+      "properties": {
+        "item": {"$ref": "#/$defs/path"},
+        "state": {"$ref": "#/$defs/path"},
+        "name": {"$ref": "#/$defs/path"},
+        "reason": {"$ref": "#/$defs/path"},
+        "desired": {"$ref": "#/$defs/path"},
+        "cpu": {"$ref": "#/$defs/path"},
+        "memory_mb": {"$ref": "#/$defs/path"},
+        "memory_gib": {"$ref": "#/$defs/path"},
+        "disk_mb": {"$ref": "#/$defs/path"},
+        "disk_gib": {"$ref": "#/$defs/path"},
+        "created": {"$ref": "#/$defs/path"}
+      }
+    }
+  }
+}

@@ -40,6 +40,8 @@ from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
 PROVIDERS = ROOT / "sandbox"
+# Beside the script, not under ROOT: a test that moves ROOT keeps these.
+SCHEMAS = Path(__file__).resolve().parent.parent / "schema"
 # The integration kinds this registry holds, each a folder of its own.
 KINDS = ("ci", "tickets", "notify")
 # The kinds are the top-level directories (sandbox/, ci/, a new one…);
@@ -580,7 +582,8 @@ def build(out):
         # Format 2 keeps format 1's fields for a sandbox provider, which
         # conch's sandbox installer reads, beside the ones every kind has.
         new = {**old, "kind": "sandbox", "version": 1, "hosts": {"api": api, "ssh": ssh_host},
-               "tier": "verified" if meta.get("checked") else "community"}
+               "tier": "verified" if meta.get("checked") else "community",
+               "capabilities": sandbox_capabilities(f)}
         pic = icon(folder)
         if pic:
             # Served beside the index, and hashed as the file is.
@@ -616,6 +619,7 @@ def build(out):
             "hosts": {"api": "" if api == "ask" else api, "follow": list(follow)},
             "key_env": f.get("key_env", ""),
             "operations": [op for op in OPERATIONS.get(kind, ()) if op in f],
+            "capabilities": integration_capabilities(kind, f),
             "tier": "verified" if meta.get("checked") else "community",
             "checked": meta.get("checked"),
             "note": f.get("note", ""),
@@ -640,6 +644,10 @@ def build(out):
         serve_icon(out, ROOT / b["kind"] / b["name"], e)
         entries.append(e)
     entries.sort(key=lambda e: (e["kind"], e["name"]))
+    # The schemas the files are written against, at a lasting address.
+    (out / "schema").mkdir(exist_ok=True)
+    for schema in sorted(SCHEMAS.glob("*.schema.json")):
+        (out / "schema" / schema.name).write_bytes(schema.read_bytes())
     data = (json.dumps({"format": 2, "kinds": kinds_index(), "entries": entries, "disabled": off}, indent=2) + "\n").encode()
     (out / "index.json").write_bytes(data)
     (out / "legacy" / "index.json").write_text(json.dumps({"format": 1, "providers": legacy, "disabled": legacy_off}, indent=2) + "\n")
@@ -665,6 +673,73 @@ def build(out):
 </table>
 """)
     return entries
+
+
+SANDBOX_OPERATIONS = (("create", ("create",)), ("get", ("get",)), ("list", ("list",)), ("start", ("start",)),
+                      ("stop", ("stop",)), ("delete", ("delete",)), ("snapshot_save", ("snapshot", "save")),
+                      ("snapshot_list", ("snapshot", "list")), ("snapshot_forget", ("snapshot", "forget")),
+                      ("preview", ("preview",)), ("usage", ("usage",)))
+PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
+
+
+def placeholders(value):
+    """The {name}s a body fills, at any depth (not {reply.x} or {item.x})."""
+    if isinstance(value, dict):
+        return set().union(*map(placeholders, value.values())) if value else set()
+    if isinstance(value, list):
+        return set().union(*map(placeholders, value)) if value else set()
+    return set(PLACEHOLDER.findall(value)) if isinstance(value, str) else set()
+
+
+def sandbox_capabilities(f):
+    """What a sandbox provider can do, read from its file. It is worked
+    out, never written down, so it cannot disagree with the file."""
+    def has(path):
+        node = f
+        for part in path:
+            node = node.get(part) if isinstance(node, dict) else None
+        return isinstance(node, dict)
+    ssh = f.get("ssh")
+    if isinstance(ssh, dict):
+        port = ssh.get("port", 22)
+        ssh = {"key": ssh.get("key", "account"), "access": isinstance(ssh.get("access"), dict),
+               "port": "endpoint" if ssh.get("endpoint") else "reply" if isinstance(port, str) else "fixed"}
+    else:
+        ssh = None
+    size = f.get("size") or {}
+    create = f.get("create") or {}
+    lst = f.get("list") or {}
+    return {
+        "operations": [op for op, path in SANDBOX_OPERATIONS if has(path)],
+        "ssh": ssh,
+        # The call's own query counts: {region} there is a setting it sends.
+        "create": sorted((placeholders(create.get("body")) | placeholders(create.get("call", ""))) - {"id"}),
+        "settings": [s.get("key") for s in f.get("setting", []) if isinstance(s, dict)],
+        "size": "names" if "names" in size else "plan" if "choices" in size
+                else "limits" if size.keys() & {"cpu", "memory_gib", "disk_gib"} else None,
+        "lifetime": isinstance(f.get("lifetime"), dict),
+        "states": sorted(set((f.get("states") or {}).values())),
+        "list": {"paged": bool(lst.get("next")), "all_mine": lst.get("all_mine") is True},
+        "auth": {"type": "header", "header": f.get("auth_header", "Authorization")},
+        "needs": ["key"] if f.get("key_env") else [],
+    }
+
+
+def integration_capabilities(kind, f):
+    """What an integration can do, read from its file, as for a sandbox
+    provider."""
+    auth = f.get("auth") or {}
+    kind_of_auth = auth.get("type", "header")
+    needs = (["base_url"] if f.get("base_url") == "ask" else []) + (["key"] if f.get("key_env") else []) \
+        + (["user"] if auth.get("user_env") else [])
+    return {
+        "operations": [op for op in OPERATIONS.get(kind, ()) if op in f],
+        "auth": {"type": kind_of_auth, **({"header": auth.get("header", "Authorization")} if kind_of_auth == "header" else {})},
+        "needs": needs,
+        "detect": sorted(k for k, v in (f.get("detect") or {}).items() if v),
+        "states": sorted(set((f.get("states") or {}).values())),
+        "follow": bool(f.get("follow_hosts")),
+    }
 
 
 def serve_icon(out, folder, e):

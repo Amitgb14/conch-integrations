@@ -169,6 +169,52 @@ it beside the provider's name.
 By hand, a pull request needs the same two files; the format is in
 [conch's guide](https://github.com/Amitgb14/conch/blob/master/internal/sandbox/providerfile.md).
 
+## What each one can do
+
+Every entry in `index.json` carries `capabilities`, worked out from its
+file when the index is built — never written by hand, so it cannot
+disagree with the file. A sandbox provider's:
+
+```json
+"capabilities": {
+  "operations": ["create", "get", "list", "start", "stop", "delete"],
+  "ssh": {"key": "none", "access": true, "port": "reply"},
+  "create": ["cpu", "memory_mb", "name", "snapshot"],
+  "settings": ["region"], "size": "limits", "lifetime": false,
+  "states": ["error", "gone", "started", "starting", "stopped", "stopping"],
+  "list": {"paged": true, "all_mine": false},
+  "auth": {"type": "header", "header": "X-API-Key"},
+  "needs": ["key"]
+}
+```
+
+- `operations`: the calls the file has, in conch's order; format 4 adds
+  `snapshot_save`, `snapshot_list`, `snapshot_forget`, `preview`, `usage`
+- `ssh`: whose key opens it (`account`, `authorize`, `none`), whether conch
+  asks `[ssh.access]` first, and whether the port is `fixed`, read from the
+  `reply` or given with the host as an `endpoint`; `null` for one that is off
+- `create`: the placeholders the create call fills, so conch asks only for
+  what the provider takes
+- `settings`, `size` (`names`, `limits`, the `plan`'s, or `null`),
+  `lifetime`: format 4's choices
+- `states`: the states of conch's the provider can report
+- `needs`: what the person supplies — `key`, and for an integration a
+  `base_url` (self-hosted) or a `user` (basic auth)
+
+An integration's has `operations` (also kept at the top of its entry, for
+older conches), `auth`, `needs`, `detect` (how conch recognises a project
+that uses it), `states` and `follow` (whether it fetches from
+`follow_hosts`). A built-in has none: conch's own code runs it.
+
+### Schemas
+
+`schema/provider.schema.json` and `schema/integration.schema.json` are
+JSON Schemas of the two files, published beside the index
+(`https://amitgb14.github.io/conch-integrations/schema/…`). Point an
+editor's TOML extension at them to see a misspelt key or a state conch
+does not have as you type. They catch the shape; conch's own check is
+still the final word.
+
 ## What is checked
 
 On every pull request:
@@ -194,6 +240,7 @@ hosts first.
 ## Running the checks
 
 ```sh
+pip install jsonschema                        # optional: checks every file against schema/
 python3 -m unittest discover -s scripts       # Python 3.11+
 python3 scripts/registry.py check --base origin/main
 python3 scripts/registry.py conch-check        # needs conch on PATH
