@@ -1,0 +1,65 @@
+name = "daytona"
+label = "Daytona"
+api = "https://app.daytona.io/api"
+key_env = "DAYTONA_API_KEY"
+docs = "https://www.daytona.io/docs/en/tools/api/"
+adapted_by = "claude"
+adapted = "2026-11-15"
+note = "SSH goes through Daytona's gateway (ssh.app.daytona.io) with a per-connection token from ssh-access, so no key needs registering. Auto-stop is off: Daytona's own default would stop the sandbox, and the agents in it, 15 minutes after conch lets go. A stopped sandbox keeps its disk; delete it to stop paying for that."
+
+[create]
+call = "POST /sandbox"
+# memory and disk are in GiB. autoStopInterval is in minutes and sent as 0
+# (off) even when nothing is asked: Daytona's default is 15.
+body = { name = "{name}", snapshot = "{snapshot}", cpu = "{cpu}", memory = "{memory_gib}", disk = "{disk_gib}", env = "{env}", labels = { conch = "1" }, autoStopInterval = 0 }
+id = "id"
+
+[get]
+call = "GET /sandbox/{id}"
+state = "state"
+name = "name"
+reason = "errorReason"
+cpu = "cpu"
+# memory and disk are reported in GiB, which conch's memory_mb would misread.
+created = "createdAt"
+
+[list]
+# conch's sandboxes, by the label create puts on them: labels={"conch":"1"}.
+call = "GET /sandbox?labels=%7B%22conch%22%3A%221%22%7D&limit=200"
+items = "items"
+id = "id"
+next = "nextCursor"
+cursor_param = "cursor"
+mine = "conch-"
+
+[start]
+call = "POST /sandbox/{id}/start"
+[stop]
+call = "POST /sandbox/{id}/stop"
+[delete]
+call = "DELETE /sandbox/{id}"
+
+[states]
+creating = "starting"
+restoring = "starting"
+starting = "starting"
+pending_build = "starting"
+building_snapshot = "starting"
+pulling_snapshot = "starting"
+started = "started"
+stopping = "stopping"
+archiving = "stopping"
+stopped = "stopped"
+archived = "stopped"
+error = "error"
+build_failed = "error"
+destroying = "gone"
+destroyed = "gone"
+# resizing, snapshotting and forking are passing states conch waits out as they are.
+
+[ssh]
+host = "ssh.app.daytona.io"
+user = "{reply.token}"
+key = "none"
+[ssh.access]
+call = "POST /sandbox/{id}/ssh-access"

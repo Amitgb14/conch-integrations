@@ -59,7 +59,7 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(json.loads((self.root / "site" / "legacy" / "index.json").read_text()), {"format": 1, "providers": []})
 
     def test_the_folder(self):
-        for name, want in (("Acme", "the folder's name"), ("daytona", "built in"), ("a", "the folder's name")):
+        for name, want in (("Acme", "the folder's name"), ("a", "the folder's name")):
             with self.subTest(name=name):
                 folder = self.write(name)
                 self.assertIn(want, self.problems())

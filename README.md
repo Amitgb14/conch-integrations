@@ -44,6 +44,14 @@ stops using a revoked version and says why.
 
 ## Sandbox providers
 
+| Provider | Name | Live check |
+| --- | --- | --- |
+| Daytona | `daytona` | not yet |
+| DigitalOcean | `digitalocean` | not yet |
+| Hetzner Cloud | `hetzner` | not yet |
+| InstaBox | `instabox` | 2026-11-15 |
+| Tensorlake | `tensorlake` | not yet |
+
 ### Using one
 
 ```sh

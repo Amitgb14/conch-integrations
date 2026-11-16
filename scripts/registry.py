@@ -43,7 +43,6 @@ OPERATIONS = {"ci": ("runs", "failed_log", "rerun", "stats"),
               "tickets": ("list", "get", "comment", "link", "move"),
               "notify": ("send",)}
 NAME = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
-BUILTIN = {"daytona", "boat", "devin", "tensorlake"}
 FILES = {"provider.toml", "meta.json", "README.md"}
 FORMATS = {1, 2}
 MAX_BYTES = 256 << 10
@@ -77,8 +76,6 @@ def load(folder):
     say = lambda msg: problems.append(f"{name}: {msg}")
     if not NAME.match(name):
         say("the folder's name: lowercase letters, digits and -, starting with a letter")
-    if name in BUILTIN:
-        say("conch has this provider built in")
     present = {p.name for p in folder.iterdir()}
     for extra in sorted(present - FILES):
         say(f"{extra}: only provider.toml, meta.json and README.md belong here")
