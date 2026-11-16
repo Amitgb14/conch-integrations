@@ -1,0 +1,56 @@
+name = "microsandbox"
+label = "Microsandbox"
+api = "https://api.microsandbox.dev"
+key_env = "MSB_API_KEY"
+docs = "https://api.microsandbox.dev/docs/openapi.json"
+adapted_by = "claude"
+adapted = "2026-11-15"
+note = """A microsandbox cloud microVM (private beta: request access at dashboard.microsandbox.dev). Put an organization API key (msb_...) in MSB_API_KEY. Cloud ssh goes only through the msb CLI or SDKs, so there is no plain ssh way in."""
+
+[create]
+# start=true queues it to start right away; otherwise it stays "created".
+call = "POST /v1/sandboxes?start=true"
+# source and reference are required. GUESS: "ubuntu" as the default image;
+# the docs' examples use bare Docker Hub names ("python"). env is an array
+# of entries on this API, not an object, so {env} is not sent.
+body = { source = "oci", reference = "ubuntu", name = "{name}", resources = { vcpus = "{cpu}", memory_mib = "{memory_mb}", disk_size_mib = "{disk_mb}" }, labels = { conch = "true" } }
+id = "id"
+
+[get]
+call = "GET /v1/sandboxes/{id}"
+state = "status"
+name = "name"
+reason = "last_failure_message"
+cpu = "spec.resources.vcpus"
+memory_mb = "spec.resources.memory_mib"
+created = "created_at"
+
+[list]
+call = "GET /v1/sandboxes?limit=100"
+items = "data"
+id = "id"
+next = "next_cursor"
+cursor_param = "cursor"
+mine = "conch-"
+
+[start]
+call = "POST /v1/sandboxes/{id}/start"
+[stop]
+call = "POST /v1/sandboxes/{id}/stop"
+[delete]
+call = "DELETE /v1/sandboxes/{id}"
+
+[states]
+created = "stopped"          # made, never started
+starting = "starting"
+running = "started"
+temporarily_unavailable = "starting"   # a worker outage; it comes back
+recovery_decision_required = "error"
+stopping = "stopping"
+stopped = "stopped"
+failed = "error"
+
+# [ssh]
+# No plain ssh yet: cloud ssh goes only through the msb CLI or SDKs.
+# conch cloud will reach it through a public URL; until then this provider is
+# off (meta.json "enabled": false).
