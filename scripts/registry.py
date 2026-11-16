@@ -281,7 +281,8 @@ def enabled(meta):
     return meta.get("enabled", True) is True
 
 
-NEWER = re.compile(r"this conch reads up to format|is a provider conch has built in")
+NEWER = re.compile(r"this conch reads up to format")
+BUILT_IN = re.compile(r"is a provider conch has built in")
 
 
 def conch_check(conch="conch"):
@@ -296,13 +297,21 @@ def conch_check(conch="conch"):
                              capture_output=True, text=True)
         said = [l.strip()[2:] for l in (out.stdout + out.stderr).splitlines() if l.strip().startswith("- ")]
         # A file newer than this conch reads (format 4: conch's own
-        # providers as files), or named for a provider it still has built
-        # in, waits for a newer conch; the registry's own checks still ran.
-        waiting = [p for p in said if NEWER.search(p)]
-        if waiting:
-            print(f"::notice file=sandbox/{folder.name}/provider.toml::this conch does not read it yet: {waiting[0]}")
-        said = [p for p in said if not NEWER.search(p)]
-        if out.returncode != 0 and not said and waiting:
+        # providers as files) waits for a newer conch. Everything else this
+        # conch says of it comes from reading it as an older format — keys
+        # and placeholders it does not know yet — so none of it counts; the
+        # registry's own checks still ran.
+        newer = [p for p in said if NEWER.search(p)]
+        if newer:
+            print(f"::notice file=sandbox/{folder.name}/provider.toml::this conch does not read it yet: {newer[0]}")
+            continue
+        # Named for a provider this conch still has built in: that waits for
+        # a conch without it, but the rest of what it says still counts.
+        built_in = [p for p in said if BUILT_IN.search(p)]
+        if built_in:
+            print(f"::notice file=sandbox/{folder.name}/provider.toml::this conch does not read it yet: {built_in[0]}")
+        said = [p for p in said if not BUILT_IN.search(p)]
+        if out.returncode != 0 and not said and built_in:
             continue
         left = [p for p in said if not (off and p.startswith("[ssh]"))]
         if out.returncode != 0 and (not off or left or not said):

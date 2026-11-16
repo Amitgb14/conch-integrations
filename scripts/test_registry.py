@@ -321,8 +321,16 @@ class RegistryTest(unittest.TestCase):
             problems, _ = run({"acme": (1, newer), "dark": (1, builtin + ssh_only)})
         self.assertEqual(problems, [])
         self.assertEqual(out.getvalue().count("::notice"), 2)
-        problems, _ = run({"acme": (1, newer + "  - [states] maps nothing to started\n"), "dark": (0, "")})
-        self.assertIn("[states]", "\n".join(problems))
+        # What an older conch says of a newer file is a misreading — format
+        # 4's keys and placeholders are unknown to it — so none of it counts.
+        misread = newer + "  - unknown key setting\n  - [create] body: unknown placeholder {image}\n"
+        with contextlib.redirect_stdout(io.StringIO()):
+            problems, _ = run({"acme": (1, misread), "dark": (0, "")})
+        self.assertEqual(problems, [])
+        # A built-in's name waits, but the rest of what conch says still counts.
+        with contextlib.redirect_stdout(io.StringIO()):
+            problems, _ = run({"acme": (1, builtin + "  - [states] maps nothing to started\n"), "dark": (0, "")})
+        self.assertEqual(problems, ["acme: [states] maps nothing to started"])
 
 
 CI = '''format = 3
