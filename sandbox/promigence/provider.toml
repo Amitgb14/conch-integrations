@@ -1,0 +1,58 @@
+name = "promigence"
+label = "Promigence"
+# Contract: https://www.promigence.ai/openapi.json (OpenAPI 3.1).
+api = "https://api.promigence.ai"
+key_env = "PROMIGENCE_API_KEY"
+docs = "https://www.promigence.ai/docs/reference/api.md"
+adapted_by = "claude"
+adapted = "2026-11-15"
+note = """A Promigence sandbox forked from the built-in base snapshot (promigence/base, size small). Make a key with npm install -g promigence and promigence signup (or login), and put it in PROMIGENCE_API_KEY. A sandbox has a total lifetime of running time, 15 minutes unless asked otherwise; this file asks for one hour, the most a new account may run. A paused sandbox is kept 30 days. SSH goes only through Promigence's own WebSocket tunnel (ProxyCommand promigence sandbox ssh ID --proxy), so there is no plain ssh way in."""
+
+[create]
+# Sandboxes are made by starting a "run" of N forks of one snapshot.
+# They have no name of their own: the run's labels, which every sandbox
+# of it carries, hold conch's.
+call = "POST /v1/runs"
+# snapshot is required, so it is fixed to the built-in base rather than
+# {snapshot} (a placeholder left empty would drop it). tier is left to
+# the snapshot (small for the base). timeout_ms: 1 hour, a new account's
+# cap (guess at a sensible default; the API's own is 15 minutes).
+body = { snapshot = "promigence/base", count = 1, labels = { conch_name = "{name}" }, timeout_ms = 3600000 }
+id = "sandboxes.0.sandbox_id"
+
+[get]
+call = "GET /v1/sandboxes/{id}"
+state = "state"
+name = "labels.conch_name"
+reason = "outcome"
+created = "created_at"
+
+[list]
+# Newest first; next_cursor is null on the last page.
+call = "GET /v1/sandboxes"
+items = "sandboxes"
+id = "sandbox_id"
+next = "next_cursor"
+cursor_param = "cursor"
+mine = "conch-"
+
+[start]
+call = "POST /v1/sandboxes/{id}/resume"
+[stop]
+# Pause: parks it with its memory and files; paused time is not billed.
+call = "POST /v1/sandboxes/{id}/pause"
+[delete]
+call = "DELETE /v1/sandboxes/{id}"
+
+[states]
+# The documented states: queued | ready | running | paused | ended.
+queued = "starting"
+ready = "started"
+running = "started"   # a command started with the run is running in it
+paused = "stopped"
+ended = "gone"
+
+# [ssh]
+# No plain ssh yet: ssh goes only through its WebSocket tunnel (ProxyCommand promigence sandbox ssh ID --proxy).
+# conch cloud will reach it through a public URL; until then this provider is
+# off (meta.json "enabled": false).

@@ -1,0 +1,59 @@
+format = 2
+name = "archil"
+label = "Archil"
+# One control plane per region (https://docs.archil.com/api-reference/introduction);
+# API keys only work in the region they were made in. Others by api_url.
+api = "https://control.green.us-east-1.aws.prod.archil.com"
+key_env = "ARCHIL_API_KEY"
+docs = "https://docs.archil.com/api-reference/sandboxes/create-sandbox"
+adapted_by = "claude"
+adapted = "2026-11-15"
+note = """An Archil persistent sandbox (Firecracker microVM, node:24-bookworm by default) in aws-us-east-1. Archil documents no ssh: processes go over its WebSocket process API, and ports can be exposed publicly. A sandbox pauses after idle_ttl_seconds without a process connection (1800 by default). Delete is refused while it is running: stop it first."""
+
+[create]
+call = "POST /api/sandboxes"
+body = { name = "{name}", vcpu_count = "{cpu}", mem_size_mib = "{memory_mb}", base_image = "{snapshot}", env = "{env}", idle_ttl_seconds = "{auto_stop_secs}" }
+id = "data.sandbox_id"
+
+[get]
+call = "GET /api/sandboxes/{id}"
+item = "data"
+state = "status"
+name = "name"
+reason = "exit_reason"
+cpu = "vcpu_count"
+memory_mb = "mem_size_mib"
+created = "created_at"
+
+[list]
+# All of the account's sandboxes, oldest first; no pagination documented.
+call = "GET /api/sandboxes"
+items = "data.sandboxes"
+id = "sandbox_id"
+mine = "conch-"
+
+[start]
+# Cold-boots a stopped or paused one from disk (resume, which keeps
+# memory, works only from paused).
+call = "POST /api/sandboxes/{id}/start"
+[stop]
+call = "POST /api/sandboxes/{id}/stop"
+[delete]
+call = "DELETE /api/sandboxes/{id}"
+
+[states]                      # SandboxState: the whole enum
+pending = "starting"
+running = "started"
+pausing = "stopping"
+paused = "stopped"
+stopping = "stopping"
+stopped = "stopped"
+exited = "stopped"
+failed = "error"
+deleting = "stopping"
+deleted = "gone"
+
+# [ssh]
+# No plain ssh yet: Archil documents none; processes go over its WebSocket
+# process API. conch cloud will reach it through a public URL; until then
+# this provider is off (meta.json "enabled": false).

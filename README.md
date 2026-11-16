@@ -57,11 +57,59 @@ stops using a revoked version and says why.
 
 | Provider | Name | Live check |
 | --- | --- | --- |
+| Agent37 | `agent37` | off: no ssh yet |
+| Archil | `archil` | off: no ssh yet |
+| briq | `briq` | off: no ssh yet |
+| CreateOS | `createos` | off: no ssh yet |
 | Daytona | `daytona` | not yet |
 | DigitalOcean | `digitalocean` | not yet |
+| Freestyle | `freestyle` | off: no ssh yet |
+| Gravix Layer | `gravixlayer` | off: no ssh yet |
 | Hetzner Cloud | `hetzner` | not yet |
 | InstaBox | `instabox` | 2026-11-15 |
+| kosa8 Cloud | `kosa8` | off: no ssh yet |
+| Microsandbox | `microsandbox` | off: no ssh yet |
+| MIOSA | `miosa` | off: no ssh yet |
+| Mosaic Sandbox | `mosaic` | not yet |
+| Namespace | `namespace` | not yet |
+| Promigence | `promigence` | off: no ssh yet |
 | Tensorlake | `tensorlake` | not yet |
+| Uno | `uno` | off: no ssh yet |
+
+A provider marked **off** has an API conch can drive but no plain-ssh way
+into its sandboxes. Its file describes the API in full and leaves `[ssh]`
+out, and its `meta.json` says `"enabled": false`. conch cloud will reach
+such sandboxes through a public URL; until then both indexes list them under
+`disabled`, apart from the providers conch offers, so no conch installs one
+it cannot connect to. A setting in conch will turn them on.
+
+### Looked at, and why they are not here
+
+A provider needs an HTTP API that a provider file can describe; lacking
+only plain ssh, it is listed off. These, from the
+[ComputeSDK sandbox ratings](https://www.computesdk.com/benchmarks/sandboxes/ratings)
+(November 2026), cannot be described yet, even off.
+
+| Provider | What stops it |
+| --- | --- |
+| E2B | its list is a bare JSON array, which `[list] items` cannot name; ssh only through a websocket proxy |
+| Novita | no documented HTTP API; ssh only through a websocket proxy, as E2B |
+| Modal | no HTTP API: its SDKs and CLI only |
+| Vercel Sandbox | stop takes a session id, every other call the sandbox's name; no ssh |
+| Blaxel | standby and resume are called on each sandbox's own host, not the API's; no ssh |
+| Beam | its VMs take ssh, but are made only through its CLI and SDK |
+| CodeSandbox | a sandbox has no state field; no ssh, only a websocket agent |
+| Cloudflare Sandbox | no hosted API: it is a Workers binding, with no ssh |
+| Upstash Box | ssh fits, but the HTTP API is undocumented and its list is a bare array |
+| Isorun | a run takes no name, and its list is undocumented; no ssh |
+| Superserve | its list is a bare JSON array; no ssh, only exec, files and preview ports |
+| Arker | no stop or start call: a VM only idles; its ssh would otherwise fit |
+| Buddy Works | every path holds the person's workspace, which a shared file cannot; its ssh would otherwise fit (format 3) |
+| Sail | create needs the organisation's app_id, fetched by another call; ssh by short-lived certificate |
+| Sandbox0 | a sandbox has no name, label or metadata to find conch's by; its ssh gateway would fit |
+| Tenki | no documented HTTP API (Connect calls only in its SDK's code); ssh through its CLI |
+| SFCompute | GPU instances on bought capacity: pool, image and sku per account, and terminate is final |
+| Google Cloud Run | no API: sandboxes are started inside your own Cloud Run container |
 
 ### Using one
 
@@ -100,7 +148,10 @@ By hand, a pull request needs the same two files; the format is in
 
 On every pull request:
 
-- conch's own check of the file (`conch sandbox provider check -offline`)
+- conch's own check of the file (`conch sandbox provider check -offline`),
+  where a sandbox provider that is off may lack only its `[ssh]`
+- a sandbox provider's `meta.json` `enabled` agrees with its file: off
+  exactly when there is no `[ssh]`
 - the folder holds only `provider.toml`, `meta.json` and an optional
   `README.md`, and the names agree
 - nothing that looks like a key, token or password is committed
@@ -117,6 +168,7 @@ hosts first.
 ```sh
 python3 -m unittest discover -s scripts       # Python 3.11+
 python3 scripts/registry.py check --base origin/main
+python3 scripts/registry.py conch-check        # needs conch on PATH
 python3 scripts/registry.py build _site
 ```
 

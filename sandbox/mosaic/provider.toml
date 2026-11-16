@@ -1,0 +1,58 @@
+format = 3
+name = "mosaic"
+label = "Mosaic Sandbox"
+api = "https://sandbox.mosaicos.com"
+key_env = "MOSAIC_API_TOKEN"
+docs = "https://sandbox.mosaicos.com/llms.txt"
+adapted_by = "claude"
+adapted = "2026-11-15"
+note = """A Mosaic Sandbox Firecracker microVM (base template, Node 22 + Python 3.11), reached as root at the ssh host and port it is given, with the public key conch uses, put in as it is made. A quiet sandbox hibernates on its own after a few seconds and wakes on the next connection; persist = true archives it at its inactivity deadline instead of destroying it."""
+
+[create]
+call = "POST /v1/sandboxes"
+# SandboxInfo (what GET returns) has no name field, so conch's name also
+# goes in metadata, which GET does return.
+body = { name = "{name}", template = "base", vcpu = "{cpu}", memory_mb = "{memory_mb}", snapshot_id = "{snapshot}", persist = true, enable_ssh = true, ssh_public_key = "{public_key}", metadata = { conch = "true", conch_name = "{name}" } }
+id = "id"
+
+[get]
+call = "GET /v1/sandboxes/{id}"
+state = "state"
+name = "metadata.conch_name"
+cpu = "vcpu"
+memory_mb = "memory_mb"
+
+[list]
+call = "GET /v1/sandboxes?metadata.conch=true"
+items = "sandboxes"
+id = "id"
+next = "next_cursor"
+cursor_param = "cursor"
+mine = "conch-"
+
+[start]
+call = "POST /v1/sandboxes/{id}/resume"
+[stop]
+# Without one of these the pause is refused 409 sandbox_busy while a
+# process runs or an ssh session is open.
+call = "POST /v1/sandboxes/{id}/pause"
+body = { preserve_processes = true }
+[delete]
+call = "DELETE /v1/sandboxes/{id}"
+
+[states]                      # Sandbox.state: the whole enum
+running = "started"
+paused = "stopped"
+archived = "stopped"          # resume restores it under the same id
+destroyed = "gone"
+
+[ssh]
+# Each sandbox has its own ssh host and port, read from it before each
+# connection (format 3). The user is root, as Mosaic's own SDK connects
+# (mosaic-sandbox 0.15.7, client.py: root@{ssh_host} -p {ssh_port}).
+host = "{reply.ssh_host}"
+port = "{reply.ssh_port}"
+user = "root"
+key = "account"
+[ssh.access]
+call = "GET /v1/sandboxes/{id}"

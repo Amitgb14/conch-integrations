@@ -1,0 +1,59 @@
+format = 2
+name = "kosa8"
+label = "kosa8 Cloud"
+api = "https://api.kosa8.com"
+key_env = "KOSA8_API_KEY"
+docs = "https://api.kosa8.com/openapi.json"
+adapted_by = "claude"
+adapted = "2026-11-15"
+note = """A kosa8 Cloud sandbox (a microVM; template base, 2 vCPU / 4 GiB unless a size is asked for) in the organization's default region. Sign up at https://app.kosa8.com, add a payment method (there is no free credit), make an API key (k8c_live_...) and put it in KOSA8_API_KEY. A size must be one of 2x4, 4x8, 8x16, 16x32 (vCPU x GiB). Stop puts it to sleep (snapshotted, RAM freed); start wakes it. Not reachable with plain ssh: its only shell is a wss:// PTY from POST /v1/sandboxes/{id}/terminal."""
+
+[create]
+call = "POST /v1/sandboxes"
+# cpus and mem_mb must together be one of the sizes (4 and 8192 for 4x8);
+# with them the sandbox boots cold (202, creating). Left out, it comes warm
+# from the base pool. image is an OCI image (not a snap_ id). persistent keeps one long-lived container, so what is
+# installed and started outlasts each command.
+body = { name = "{name}", cpus = "{cpu}", mem_mb = "{memory_mb}", disk_gb = "{disk_gib}", image = "{snapshot}", env = "{env}", sleep_after_s = "{auto_stop_secs}", persistent = true }
+id = "sandbox.id"
+
+[get]
+call = "GET /v1/sandboxes/{id}"
+item = "sandbox"
+state = "state"
+name = "name"
+reason = "last_error"
+cpu = "cpus"
+memory_mb = "mem_mb"
+created = "created_at"   # Unix ms
+
+[list]
+call = "GET /v1/sandboxes"
+items = "sandboxes"
+id = "id"
+next = "next_cursor"
+cursor_param = "cursor"
+mine = "conch-"
+
+[start]
+call = "POST /v1/sandboxes/{id}/wake"
+[stop]
+call = "POST /v1/sandboxes/{id}/sleep"
+[delete]
+call = "DELETE /v1/sandboxes/{id}"
+
+[states]
+creating = "starting"
+running = "started"
+paused = "stopped"       # the SDK docs: "paused is a sleeping sandbox"
+sleeping = "stopped"
+stopped = "stopped"
+error = "error"
+deleted = "gone"
+host_removed = "gone"    # your own host was removed
+host_lost = "gone"       # its host was silent for 24 hours
+
+# [ssh]
+# No plain ssh yet: its only shell is a wss:// PTY from POST /v1/sandboxes/{id}/terminal.
+# conch cloud will reach it through a public URL; until then this provider is
+# off (meta.json "enabled": false).

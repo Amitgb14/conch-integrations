@@ -32,10 +32,8 @@ jobs:
           go install github.com/Amitgb14/conch/cmd/conch@master
           export CONCH_HOME="$(mktemp -d)"
           status=0
-          for f in sandbox/*/provider.toml; do
-            [ -e "$f" ] || continue
-            conch sandbox provider check -offline "$f" || status=1
-          done
+          # A sandbox provider that is off has no [ssh] yet; the rest must be clean.
+          python scripts/registry.py conch-check || status=1
           # Integration files need a conch with conch integration; until
           # master has it, the registry's own checks above are all there is.
           if conch integration guide >/dev/null 2>&1; then

@@ -7,6 +7,7 @@
                                      OUT/legacy/ (the sandbox providers in format 1,
                                      for conches from before the move), and
                                      OUT/index.json.sig when CONCH_REGISTRY_SIGNING_KEY is set
+    registry.py conch-check [CONCH]  conch's own check of every sandbox provider
 
 A folder per kind: sandbox/NAME/{provider.toml, meta.json} for sandbox
 providers, and ci|tickets|notify/NAME/{integration.toml, meta.json} for
@@ -15,6 +16,12 @@ this checks what conch does not: the folder's shape, meta.json, that no
 secret was committed, and that a file's hosts did not move — a file sends
 the person's key to its api host, so a new host is a new destination for
 everybody's key, and needs a maintainer's label.
+
+A sandbox provider with no plain-ssh way in is still described, its API
+in full and its [ssh] left out, with "enabled": false in meta.json. conch
+cloud will reach such sandboxes through a public URL; until a conch can,
+both indexes list them under "disabled", apart from the providers conch
+offers.
 """
 
 import base64
@@ -49,11 +56,12 @@ OPERATIONS = {"ci": ("runs", "failed_log", "rerun", "stats"),
               "notify": ("send",)}
 NAME = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
 FILES = {"provider.toml", "meta.json", "README.md"}
-FORMATS = {1, 2}
+FORMATS = {1, 2, 3}
 MAX_BYTES = 256 << 10
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 VERSION = re.compile(r"^\d+\.\d+\.\d+$")
 META_KEYS = {"adapted_by", "adapted", "docs", "conch", "checked"}
+OPTIONAL_META = {"enabled"}
 CHECKED_KEYS = {"date", "conch", "sandboxes"}
 
 # What a committed credential looks like. A provider file holds none —
@@ -129,7 +137,7 @@ def load(folder):
     if not isinstance(meta, dict):
         say("meta.json: an object")
         return f, None, problems
-    for k in sorted(set(meta) - META_KEYS):
+    for k in sorted(set(meta) - META_KEYS - OPTIONAL_META):
         say(f"meta.json: unknown key {k}")
     for k in sorted(META_KEYS - set(meta)):
         say(f"meta.json: no {k}")
@@ -141,6 +149,13 @@ def load(folder):
         say("meta.json docs: the https:// URL it was adapted from")
     if not VERSION.match(str(meta.get("conch", ""))):
         say("meta.json conch: the conch version it was written for, e.g. 0.1.10")
+    enabled = meta.get("enabled", True)
+    if not isinstance(enabled, bool):
+        say("meta.json enabled: true or false")
+    elif enabled and "ssh" not in f:
+        say('no [ssh]: conch reaches a sandbox over ssh; with none yet, set "enabled": false in meta.json')
+    elif not enabled and "ssh" in f:
+        say('has [ssh] but meta.json says "enabled": false; drop one')
     checked = meta.get("checked")
     if checked is not None:
         if not isinstance(checked, dict):
@@ -198,6 +213,27 @@ def check(base=None):
             old = integration_at_base(base, kind, folder.name)
             if old is not None and integration_hosts(old) != integration_hosts(f) and os.environ.get("ALLOW_HOST_CHANGE") != "true":
                 problems.append(f"{kind}/{folder.name}: moves from {integration_hosts(old)} to {integration_hosts(f)}; a maintainer has to label the pull request host-change")
+    return problems
+
+
+def enabled(meta):
+    return meta.get("enabled", True) is True
+
+
+def conch_check(conch="conch"):
+    """conch sandbox provider check -offline on every sandbox provider. One
+    that is off has no [ssh] by design, so conch's [ssh] problems are
+    expected of it; anything else is a problem either way."""
+    problems = []
+    for folder in folders():
+        _, meta, _ = load(folder)
+        off = meta is not None and not enabled(meta)
+        out = subprocess.run([conch, "sandbox", "provider", "check", "-offline", str(folder / "provider.toml")],
+                             capture_output=True, text=True)
+        said = [l.strip()[2:] for l in (out.stdout + out.stderr).splitlines() if l.strip().startswith("- ")]
+        left = [p for p in said if not (off and p.startswith("[ssh]"))]
+        if out.returncode != 0 and (not off or left or not said):
+            problems += [f"{folder.name}: {p}" for p in left] or [f"{folder.name}: conch check failed: {(out.stdout + out.stderr).strip()}"]
     return problems
 
 
@@ -355,7 +391,7 @@ def build(out):
     (out / "providers").mkdir(parents=True, exist_ok=True)
     (out / "integrations").mkdir(parents=True, exist_ok=True)
     (out / "legacy" / "providers").mkdir(parents=True, exist_ok=True)
-    legacy, entries = [], []
+    legacy, entries, legacy_off, off = [], [], [], []
     for folder in folders():
         f, meta, problems = load(folder)
         if problems:
@@ -377,11 +413,17 @@ def build(out):
             "sha256": hashlib.sha256(raw).hexdigest(),
             **{k: meta[k] for k in ("adapted_by", "adapted", "docs", "conch", "checked")},
         }
-        legacy.append(old)
         # Format 2 keeps format 1's fields for a sandbox provider, which
         # conch's sandbox installer reads, beside the ones every kind has.
-        entries.append({**old, "kind": "sandbox", "version": 1, "hosts": {"api": api, "ssh": ssh_host},
-                        "tier": "verified" if meta.get("checked") else "community"})
+        new = {**old, "kind": "sandbox", "version": 1, "hosts": {"api": api, "ssh": ssh_host},
+               "tier": "verified" if meta.get("checked") else "community"}
+        if enabled(meta):
+            legacy.append(old)
+            entries.append(new)
+        else:
+            # Off: listed apart, so no conch offers one it cannot reach.
+            legacy_off.append({**old, "enabled": False})
+            off.append({**new, "enabled": False, "tier": "off"})
     for kind, folder in integration_folders():
         f, meta, problems = load_integration(kind, folder)
         if problems:
@@ -421,9 +463,9 @@ def build(out):
                         "hosts": {"api": ""}, "tier": "built in", "docs": b["docs"], "note": b.get("note", ""),
                         "key_env": b.get("key_env", "")})
     entries.sort(key=lambda e: (e["kind"], e["name"]))
-    data = (json.dumps({"format": 2, "entries": entries}, indent=2) + "\n").encode()
+    data = (json.dumps({"format": 2, "entries": entries, "disabled": off}, indent=2) + "\n").encode()
     (out / "index.json").write_bytes(data)
-    (out / "legacy" / "index.json").write_text(json.dumps({"format": 1, "providers": legacy}, indent=2) + "\n")
+    (out / "legacy" / "index.json").write_text(json.dumps({"format": 1, "providers": legacy, "disabled": legacy_off}, indent=2) + "\n")
     key = os.environ.get("CONCH_REGISTRY_SIGNING_KEY", "").strip()
     if key:
         (out / "index.json.sig").write_text(sign(key, data) + "\n")
@@ -431,6 +473,10 @@ def build(out):
         f"<tr><td>{html.escape(e['label'])}</td><td>{html.escape(e['kind'])}</td><td><code>{html.escape(e['name'])}</code></td>"
         f"<td>{html.escape('built into conch' if e.get('builtin') else (e['hosts']['api'] or 'your own server'))}</td><td>{'checked ' + e['checked']['date'] if e.get('checked') else 'not checked live yet'}</td></tr>"
         for e in entries)
+    rows += "".join(
+        f"\n<tr><td>{html.escape(e['label'])}</td><td>sandbox</td><td><code>{html.escape(e['name'])}</code></td>"
+        f"<td>{html.escape(e['hosts']['api'])}</td><td>off: no ssh yet</td></tr>"
+        for e in off)
     (out / "index.html").write_text(f"""<!DOCTYPE html>
 <meta charset="utf-8"><title>conch integrations</title>
 <style>body{{font:15px system-ui;margin:3em auto;max-width:52em;padding:0 1em}}td,th{{padding:.3em 1em .3em 0;text-align:left}}</style>
@@ -479,6 +525,11 @@ def main(argv):
             return 1
         print(f"{len(folders())} sandbox providers and {len(integration_folders())} integrations, no problems")
         return 0
+    if len(argv) in (1, 2) and argv[0] == "conch-check":
+        problems = conch_check(*argv[1:])
+        for p in problems:
+            print(p, file=sys.stderr)
+        return 1 if problems else 0
     if len(argv) == 2 and argv[0] == "build":
         print(f"{len(build(argv[1]))} entries indexed")
         return 0

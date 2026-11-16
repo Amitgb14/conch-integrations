@@ -2,8 +2,10 @@
 
 import json
 import os
+import re
 import subprocess
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -56,8 +58,8 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(self.problems(), "")
         self.providers.mkdir()
         self.assertEqual(registry.build(self.root / "site"), [])
-        self.assertEqual(json.loads((self.root / "site" / "index.json").read_text()), {"format": 2, "entries": []})
-        self.assertEqual(json.loads((self.root / "site" / "legacy" / "index.json").read_text()), {"format": 1, "providers": []})
+        self.assertEqual(json.loads((self.root / "site" / "index.json").read_text()), {"format": 2, "entries": [], "disabled": []})
+        self.assertEqual(json.loads((self.root / "site" / "legacy" / "index.json").read_text()), {"format": 1, "providers": [], "disabled": []})
 
     def test_the_folder(self):
         for name, want in (("Acme", "the folder's name"), ("a", "the folder's name")):
@@ -78,7 +80,7 @@ class RegistryTest(unittest.TestCase):
     def test_the_file(self):
         for change, want in (
             (('name = "acme"', 'name = "other"'), "the folder is 'acme'"),
-            (("format = 2", "format = 3"), "format 3"),
+            (("format = 2", "format = 4"), "format 4"),
             (("https://api.acme.example", "http://api.acme.example"), "https://"),
             (("https://api.acme.example", "https://localhost"), "not this computer"),
             (("[ssh]", "[ssh"), "provider.toml:"),
@@ -172,6 +174,64 @@ class RegistryTest(unittest.TestCase):
         self.write("gamma", meta={})
         with self.assertRaises(SystemExit):
             registry.build(self.root / "site2")
+
+    def test_format_3(self):
+        # A port read from [ssh.access]'s reply, and headers: conch's format 3.
+        self.write(toml=GOOD.replace("format = 2", "format = 3"))
+        self.assertEqual(self.problems(), "")
+
+    def test_a_provider_without_ssh_is_off(self):
+        # Its API is described; its [ssh] waits for conch cloud's public URL.
+        no_ssh = GOOD.split("[ssh]")[0] + "# [ssh]\n# host = ...\n"
+        off = {**META, "enabled": False}
+        self.write("dark", toml=no_ssh, meta=off)
+        self.assertEqual(self.problems(), "")
+        for toml, meta, want in (
+            (GOOD, off, "has [ssh]"),
+            (no_ssh, META, "no [ssh]"),
+            (no_ssh, {**off, "enabled": "no"}, "enabled: true or false"),
+        ):
+            with self.subTest(want=want):
+                self.write("dark", toml=toml, meta=meta)
+                self.assertIn(want, self.problems())
+        # Off is listed apart in both indexes: no conch offers one it cannot reach.
+        self.write("dark", toml=no_ssh, meta=off)
+        self.write()
+        site = self.root / "site"
+        self.assertEqual([e["name"] for e in registry.build(site)], ["acme"])
+        index = json.loads((site / "index.json").read_text())
+        self.assertEqual([e["name"] for e in index["entries"]], ["acme"])
+        self.assertEqual([(e["name"], e["enabled"]) for e in index["disabled"]], [("dark", False)])
+        legacy = json.loads((site / "legacy" / "index.json").read_text())
+        self.assertEqual([e["name"] for e in legacy["providers"]], ["acme"])
+        self.assertEqual([e["name"] for e in legacy["disabled"]], ["dark"])
+        self.assertTrue((site / "providers" / "dark.toml").exists())
+        self.assertIn("off: no ssh yet", (site / "index.html").read_text())
+
+    def test_conch_check(self):
+        no_ssh = GOOD.split("[ssh]")[0]
+        self.write("dark", toml=no_ssh, meta={**META, "enabled": False})
+        self.write()
+        ssh_only = "x:\n  - [ssh] host and user: no ssh\n  - [ssh] key \"\": account, authorize or none\n"
+
+        def run(outputs):
+            calls = []
+
+            def fake(cmd, **kw):
+                calls.append(cmd[-1])
+                rc, err = outputs[Path(cmd[-1]).parent.name]
+                return subprocess.CompletedProcess(cmd, rc, "", err)
+            with mock.patch.object(registry.subprocess, "run", fake):
+                return registry.conch_check("conch"), calls
+
+        problems, calls = run({"acme": (0, ""), "dark": (1, ssh_only)})
+        self.assertEqual(problems, [])
+        self.assertEqual(len(calls), 2)
+        # Anything beyond the missing [ssh] is still a problem, on or off.
+        problems, _ = run({"acme": (0, ""), "dark": (1, ssh_only + "  - [states] maps nothing to started\n")})
+        self.assertIn("[states]", "\n".join(problems))
+        problems, _ = run({"acme": (1, ssh_only), "dark": (1, ssh_only)})
+        self.assertEqual([p.split(":")[0] for p in problems], ["acme", "acme"])
 
 
 CI = '''format = 3
@@ -321,6 +381,41 @@ class IntegrationTest(unittest.TestCase):
         with mock.patch.dict(os.environ, {"CONCH_REGISTRY_SIGNING_KEY": "short"}):
             with self.assertRaises(SystemExit):
                 registry.build(self.root / "site3")
+
+
+class RepositoryTest(unittest.TestCase):
+    """The providers committed here, rather than ones made up for a test."""
+
+    def test_the_providers_here_are_good(self):
+        self.assertEqual(registry.check(), [])
+
+    def test_instabox_sends_the_headers_its_api_requires(self):
+        # Mutating POSTs and DELETEs need an Idempotency-Key, and a machine
+        # delete names the machine in X-Confirm-Delete, or InstaBox answers
+        # 409 (https://instabox.sh/docs/api-reference/introduction.md).
+        f = tomllib.loads((registry.PROVIDERS / "instabox" / "provider.toml").read_text())
+        self.assertEqual(f.get("format"), 3)
+        top = f.get("headers", {}).get("Idempotency-Key")
+        for call in ("create", "start", "stop", "delete"):
+            self.assertEqual(f[call].get("headers", {}).get("Idempotency-Key", top), "{uuid}", call)
+        self.assertEqual(f["ssh"]["access"].get("headers", {}).get("Idempotency-Key", top), "{uuid}", "ssh.access")
+        for call in ("get", "list"):
+            self.assertIn(f[call].get("headers", {}).get("Idempotency-Key", top), (None, ""), call)
+        self.assertEqual(f["delete"]["headers"]["X-Confirm-Delete"], "{id}")
+
+    def test_the_readme_lists_every_provider(self):
+        # Rows of the README's sandbox table: | Label | `name` | live check |
+        readme = (registry.ROOT / "README.md").read_text()
+        listed = {}
+        for label, name, live in re.findall(r"^\| ([^|]+?) \| `([a-z0-9-]+)` \| ([^|]+?) \|$", readme, re.M):
+            listed[name] = (label, live)
+        self.assertEqual(sorted(listed), [f.name for f in registry.folders()])
+        for folder in registry.folders():
+            f = tomllib.loads((folder / "provider.toml").read_text())
+            meta = json.loads((folder / "meta.json").read_text())
+            live = meta["checked"]["date"] if meta["checked"] else "not yet"
+            want = (f.get("label") or folder.name, live if meta.get("enabled", True) else "off: no ssh yet")
+            self.assertEqual(listed[folder.name], want, folder.name)
 
 
 if __name__ == "__main__":

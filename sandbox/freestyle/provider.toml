@@ -1,0 +1,51 @@
+format = 2
+name = "freestyle"
+label = "Freestyle"
+api = "https://api.freestyle.sh"
+key_env = "FREESTYLE_API_KEY"
+docs = "https://api.freestyle.sh/openapi.json"
+adapted_by = "claude"
+adapted = "2026-11-15"
+note = """A Freestyle VM from the platform's default snapshot, allowed out to the internet. Off until conch can reach it: Freestyle's ssh gateway (beta-ssh.freestyle.sh) takes a token from an identity granted the VM, made in three calls a provider file cannot chain. A paused VM keeps its memory; delete it to stop paying for its disk."""
+
+[create]
+call = "POST /v5/vms"
+# The firewall is required. A rule's endpoint with no identity is the VM
+# being made: this lets it out to every public address.
+body = { displayName = "{name}", metadata = { conch = "true" }, snapshotId = "{snapshot}", idleTimeoutSeconds = "{auto_stop_secs}", firewall = { rules = [{ action = "allow", source = {}, destination = { public = true } }] } }
+id = "id"
+
+[get]
+call = "GET /v5/vms/{id}"
+state = "state"
+name = "displayName"
+cpu = "resources.cpu"
+memory_mb = "resources.memory"
+disk_mb = "resources.storage"
+created = "createdAt"
+
+[list]
+# One page of up to 100 of conch's, by metadata; Freestyle pages by offset,
+# which a cursor cannot carry.
+call = "GET /v5/vms?metadata=conch:true&limit=100"
+items = "vms"
+id = "id"
+mine = "conch-"
+
+[start]
+call = "POST /v5/vms/{id}/start"
+[stop]
+# Pause: execution stops, memory and disk are kept.
+call = "POST /v5/vms/{id}/pause"
+[delete]
+call = "DELETE /v5/vms/{id}"
+
+[states]
+starting = "starting"
+running = "started"
+pausing = "stopping"
+paused = "stopped"
+stopped = "stopped"
+
+# [ssh]
+# No plain ssh yet: conch cloud will reach it through a public URL.

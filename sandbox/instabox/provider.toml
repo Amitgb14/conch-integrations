@@ -1,3 +1,4 @@
+format = 3
 name = "instabox"
 label = "InstaBox"
 api = "https://api.instabox.sh"
@@ -7,7 +8,11 @@ auth_value = "{key}"
 docs = "https://instabox.sh/docs/api-reference/introduction.md"
 adapted_by = "claude"
 adapted = "2026-11-15"
-note = "Create, start, stop and delete need an Idempotency-Key header, and delete also needs X-Confirm-Delete with the machine's ID or name (API keys made after the rollout get 409 delete_confirmation_required without it). Each change answers 202 with an operation; the machine's state moves on its own. SSH goes through the instabox gateway with a per-connection token (ssh-tokens), so no key needs registering. Free plan: 1 machine, size 4 vCPU / 8 GiB only, idle pause fixed at 30 min."
+note = "Each change answers 202 with an operation; the machine's state moves on its own. SSH goes through the instabox gateway with a per-connection token (ssh-tokens), so no key needs registering. Free plan: 1 machine, size 4 vCPU / 8 GiB only, idle pause fixed at 30 min."
+# Every mutating POST and DELETE needs an Idempotency-Key (a new one each
+# request), and a machine delete names the machine in X-Confirm-Delete, or
+# InstaBox answers 409. The GETs leave the key out.
+headers = { Idempotency-Key = "{uuid}" }
 
 [create]
 call = "POST /v1/machines"
@@ -17,6 +22,7 @@ id = "machineId"
 
 [get]
 call = "GET /v1/machines/{id}"
+headers = { Idempotency-Key = "" }
 state = "state"
 name = "name"
 reason = "lastError.message"
@@ -26,6 +32,7 @@ created = "createdAt"
 
 [list]
 call = "GET /v1/machines"
+headers = { Idempotency-Key = "" }
 items = "machines"
 id = "id"
 next = "nextCursor"
@@ -38,6 +45,7 @@ call = "POST /v1/machines/{id}/start"
 call = "POST /v1/machines/{id}/stop"
 [delete]
 call = "DELETE /v1/machines/{id}"
+headers = { X-Confirm-Delete = "{id}" }
 
 [states]
 creating = "starting"
