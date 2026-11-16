@@ -1,4 +1,4 @@
-format = 2
+format = 3
 name = "mosaic"
 label = "Mosaic Sandbox"
 api = "https://sandbox.mosaicos.com"
@@ -6,7 +6,7 @@ key_env = "MOSAIC_API_TOKEN"
 docs = "https://sandbox.mosaicos.com/llms.txt"
 adapted_by = "claude"
 adapted = "2026-11-15"
-note = """A Mosaic Sandbox Firecracker microVM (base template, Node 22 + Python 3.11). Mosaic serves native ssh at a per-sandbox ssh_host and ssh_port with the key given at create, but the port differs per sandbox and this file format cannot read a port from a reply, so [ssh] is left out for now. A quiet sandbox hibernates on its own after a few seconds and wakes on the next connection; persist = true archives it at its inactivity deadline instead of destroying it."""
+note = """A Mosaic Sandbox Firecracker microVM (base template, Node 22 + Python 3.11), reached as root at the ssh host and port it is given, with the public key conch uses, put in as it is made. A quiet sandbox hibernates on its own after a few seconds and wakes on the next connection; persist = true archives it at its inactivity deadline instead of destroying it."""
 
 [create]
 call = "POST /v1/sandboxes"
@@ -46,14 +46,13 @@ paused = "stopped"
 archived = "stopped"          # resume restores it under the same id
 destroyed = "gone"
 
-# Off (meta.json "enabled": false) until a port can come from a reply, or
-# conch cloud reaches it through a public URL. Then (the ssh user is not
-# documented;
-# ssh_connection_string carries it):
-# [ssh]
-# host = "{reply.ssh_host}"
-# port = "{reply.ssh_port}"
-# user = "?"
-# key = "account"
-# [ssh.access]
-# call = "GET /v1/sandboxes/{id}"
+[ssh]
+# Each sandbox has its own ssh host and port, read from it before each
+# connection (format 3). The user is root, as Mosaic's own SDK connects
+# (mosaic-sandbox 0.15.7, client.py: root@{ssh_host} -p {ssh_port}).
+host = "{reply.ssh_host}"
+port = "{reply.ssh_port}"
+user = "root"
+key = "account"
+[ssh.access]
+call = "GET /v1/sandboxes/{id}"

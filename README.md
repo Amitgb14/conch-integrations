@@ -20,7 +20,7 @@ reader of its own; nothing here is code.
 | kosa8 Cloud | `kosa8` | off: no ssh yet |
 | Microsandbox | `microsandbox` | off: no ssh yet |
 | MIOSA | `miosa` | off: no ssh yet |
-| Mosaic Sandbox | `mosaic` | off: no ssh yet |
+| Mosaic Sandbox | `mosaic` | not yet |
 | Namespace | `namespace` | not yet |
 | Promigence | `promigence` | off: no ssh yet |
 | Uno | `uno` | off: no ssh yet |
