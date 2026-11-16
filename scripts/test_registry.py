@@ -72,7 +72,7 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(self.problems(), "")
         self.providers.mkdir()
         self.assertEqual(registry.build(self.root / "site"), [])
-        self.assertEqual(json.loads((self.root / "site" / "index.json").read_text()), {"format": 2, "kinds": [], "entries": [], "disabled": []})
+        self.assertEqual(json.loads((self.root / "site" / "index.json").read_text()), {"format": 2, "capabilities_version": 2, "kinds": [], "entries": [], "disabled": []})
         self.assertEqual(json.loads((self.root / "site" / "legacy" / "index.json").read_text()), {"format": 1, "providers": [], "disabled": []})
 
     def test_the_folder(self):
