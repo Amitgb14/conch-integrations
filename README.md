@@ -21,6 +21,7 @@ reader of its own; nothing here is code.
 | MIOSA | `miosa` | off: no ssh yet |
 | Namespace | `namespace` | not yet |
 | Promigence | `promigence` | off: no ssh yet |
+| Uno | `uno` | off: no ssh yet |
 
 The list as conch reads it is published at
 <https://amitgb14.github.io/conch-sandbox-providers/index.json>.

@@ -1,0 +1,65 @@
+format = 2
+name = "uno"
+label = "Uno"
+# The OpenAPI's one server, which "serves every operation"; the docs'
+# console.uno.place answers the same API.
+api = "https://console.uno4.dev"
+key_env = "UNO_API_KEY"
+docs = "https://console.uno4.dev/api/v1/openapi.json"
+adapted_by = "claude"
+adapted = "2026-11-15"
+note = """An Uno box: a Firecracker microVM (Ubuntu 24.04, 2 vCPU / 2 GiB / 10 GB disk) in your plan's region. Making one needs an active Uno box plan and a key that may spend (an API key made in the console under Agents & API, or the account key; the key from Connect to Uno is refused with PURCHASE_SCOPE_REQUIRED). Uno boxes do take ssh (ssh -p <port> uno@<name>.uno4.dev with the key given at create), but the port is allocated per box, so this file does not describe the way in yet."""
+
+[create]
+# Every one of template, ram_mb, vcpu, disk_gb is required, so they are
+# fixed here rather than left to placeholders that may be empty.
+# ssh_key puts conch's key in, for the day the [ssh] section is written.
+call = "POST /api/v1/boxes"
+body = { name = "{name}", template = "ubuntu-24.04", vcpu = 2, ram_mb = 2048, disk_gb = 10, network_profile = "nat", comment = "made by conch", ssh_key = "{public_key}" }
+id = "id"
+
+[get]
+call = "GET /api/v1/boxes/{id}"
+state = "status"
+name = "name"
+reason = "provision_error"
+cpu = "vcpu"
+memory_mb = "ram_mb"
+created = "created_at"
+
+[list]
+# The list is not paginated: every box of the account in one answer.
+call = "GET /api/v1/boxes"
+items = "boxes"
+id = "id"
+mine = "conch-"
+
+[start]
+call = "POST /api/v1/boxes/{id}/start"
+[stop]
+# Stop keeps the disk on the node and burns no RAM or vCPU hours.
+call = "POST /api/v1/boxes/{id}/stop"
+[delete]
+call = "DELETE /api/v1/boxes/{id}"
+
+[states]
+# Box.status is a free string in the OpenAPI. Documented: provisioning,
+# running; "starting" is the answer of start. The rest are guesses from
+# the lifecycle the docs describe (stop, sleep, archive).
+provisioning = "starting"
+starting = "starting"
+running = "started"
+stopping = "stopping"   # guess
+stopped = "stopped"     # guess, from "stopped" in the storage-tier docs
+sleeping = "stopped"    # guess: scale-to-zero sleep, woken by POST /wake
+archived = "stopped"    # guess: disk in S3, back with POST /unarchive, not /start
+error = "error"         # guess
+failed = "error"        # guess
+deleted = "gone"        # guess
+
+# [ssh]
+# Uno boxes take plain ssh, with the key given at create, but on a port
+# allocated per box, which [ssh] port cannot read from a reply:
+#   ssh -p <port> uno@<name>.uno4.dev
+# Off (meta.json "enabled": false) until conch can take the port from the
+# box, or conch cloud reaches it through a public URL.
