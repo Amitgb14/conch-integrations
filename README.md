@@ -56,6 +56,13 @@ are not listed because conch has them built in.
 | Upstash Box | ssh fits, but the HTTP API is undocumented and its list is a bare array |
 | Isorun | a run takes no name, and its list is undocumented; no ssh |
 | Superserve | its list is a bare JSON array; no ssh, only exec, files and preview ports |
+| Arker | no stop or start call: a VM only idles; its ssh would otherwise fit |
+| Buddy Works | every path holds the person's workspace, which a shared file cannot; ssh port is per sandbox |
+| Sail | create needs the organisation's app_id, fetched by another call; ssh by short-lived certificate |
+| Sandbox0 | a sandbox has no name, label or metadata to find conch's by; its ssh gateway would fit |
+| Tenki | no documented HTTP API (Connect calls only in its SDK's code); ssh through its CLI |
+| SFCompute | GPU instances on bought capacity: pool, image and sku per account, and terminate is final |
+| Google Cloud Run | no API: sandboxes are started inside your own Cloud Run container |
 
 ## Using one
 
