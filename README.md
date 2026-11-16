@@ -59,6 +59,7 @@ stops using a revoked version and says why.
 | --- | --- | --- |
 | Agent37 | `agent37` | off: no ssh yet |
 | Archil | `archil` | off: no ssh yet |
+| boat.dev | `boat` | not yet |
 | briq | `briq` | off: no ssh yet |
 | CreateOS | `createos` | off: no ssh yet |
 | Daytona | `daytona` | not yet |
@@ -75,6 +76,12 @@ stops using a revoked version and says why.
 | Promigence | `promigence` | off: no ssh yet |
 | Tensorlake | `tensorlake` | not yet |
 | Uno | `uno` | off: no ssh yet |
+
+Daytona, boat.dev and Tensorlake were built into conch until they became
+files here (format 4: what a person can choose for them — a region, a
+default image, a size — and their snapshots and preview links). A conch
+from before that keeps its own and reads only `legacy/`, which leaves
+format-4 files out.
 
 A provider marked **off** has an API conch can drive but no plain-ssh way
 into its sandboxes. Its file describes the API in full and leaves `[ssh]`
