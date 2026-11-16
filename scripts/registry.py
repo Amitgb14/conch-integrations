@@ -59,7 +59,7 @@ INTEGRATION_CHECKED_KEYS = {"date", "conch", "detail"}
 # What an integration file's operations are, by kind: what conch's
 # contract for that kind calls them.
 OPERATIONS = {"ci": ("runs", "failed_log", "rerun", "stats"),
-              "tickets": ("list", "get", "comment", "link", "move"),
+              "tickets": ("list", "mine", "get", "comment", "link", "move"),
               "notify": ("send",)}
 NAME = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
 ICONS = ("icon.svg", "icon.png")
@@ -600,7 +600,8 @@ def build(out):
             # Off: listed apart, so no conch offers one it cannot reach.
             if legacy_too:
                 legacy_off.append({**old, "enabled": False})
-            off.append({**new, "enabled": False, "tier": "off"})
+            # Why, said rather than assumed: today the only reason is ssh.
+            off.append({**new, "enabled": False, "tier": "off", "why": "no ssh yet"})
     for kind, folder in integration_folders():
         f, meta, problems = load_integration(kind, folder)
         if problems:
@@ -648,7 +649,8 @@ def build(out):
     (out / "schema").mkdir(exist_ok=True)
     for schema in sorted(SCHEMAS.glob("*.schema.json")):
         (out / "schema" / schema.name).write_bytes(schema.read_bytes())
-    data = (json.dumps({"format": 2, "kinds": kinds_index(), "entries": entries, "disabled": off}, indent=2) + "\n").encode()
+    data = (json.dumps({"format": 2, "capabilities_version": CAPABILITIES_VERSION, "kinds": kinds_index(),
+                        "entries": entries, "disabled": off}, indent=2) + "\n").encode()
     (out / "index.json").write_bytes(data)
     (out / "legacy" / "index.json").write_text(json.dumps({"format": 1, "providers": legacy, "disabled": legacy_off}, indent=2) + "\n")
     key = os.environ.get("CONCH_REGISTRY_SIGNING_KEY", "").strip()
@@ -679,6 +681,9 @@ SANDBOX_OPERATIONS = (("create", ("create",)), ("get", ("get",)), ("list", ("lis
                       ("stop", ("stop",)), ("delete", ("delete",)), ("snapshot_save", ("snapshot", "save")),
                       ("snapshot_list", ("snapshot", "list")), ("snapshot_forget", ("snapshot", "forget")),
                       ("preview", ("preview",)), ("usage", ("usage",)))
+# The shape of capabilities: one more when a field changes meaning, not
+# when one is added. 1 (absent): lifetime a bool. 2: lifetime its numbers.
+CAPABILITIES_VERSION = 2
 PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
 
 
@@ -717,7 +722,9 @@ def sandbox_capabilities(f):
         "settings": [s.get("key") for s in f.get("setting", []) if isinstance(s, dict)],
         "size": "names" if "names" in size else "plan" if "choices" in size
                 else "limits" if size.keys() & {"cpu", "memory_gib", "disk_gib"} else None,
-        "lifetime": isinstance(f.get("lifetime"), dict),
+        # The numbers, so a catalog can say "2 h, at most 24 h" before install.
+        "lifetime": {k: v for k, v in f["lifetime"].items() if k in ("default_mins", "max_mins")}
+                    if isinstance(f.get("lifetime"), dict) else None,
         "states": sorted(set((f.get("states") or {}).values())),
         "list": {"paged": bool(lst.get("next")), "all_mine": lst.get("all_mine") is True},
         "auth": {"type": "header", "header": f.get("auth_header", "Authorization")},
@@ -729,6 +736,9 @@ def integration_capabilities(kind, f):
     """What an integration can do, read from its file, as for a sandbox
     provider."""
     auth = f.get("auth") or {}
+    if not auth and f.get("auth_header"):
+        # The key sent as a sandbox file sends it, which the format takes too.
+        auth = {"type": "header", "header": f["auth_header"]}
     kind_of_auth = auth.get("type", "header")
     needs = (["base_url"] if f.get("base_url") == "ask" else []) + (["key"] if f.get("key_env") else []) \
         + (["user"] if auth.get("user_env") else [])
@@ -737,6 +747,8 @@ def integration_capabilities(kind, f):
         "auth": {"type": kind_of_auth, **({"header": auth.get("header", "Authorization")} if kind_of_auth == "header" else {})},
         "needs": needs,
         "detect": sorted(k for k, v in (f.get("detect") or {}).items() if v),
+        # What it matches, so conch can suggest it for a project that uses it.
+        "detect_on": {k: list(v) for k, v in (f.get("detect") or {}).items() if v},
         "states": sorted(set((f.get("states") or {}).values())),
         "follow": bool(f.get("follow_hosts")),
     }

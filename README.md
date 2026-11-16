@@ -180,7 +180,7 @@ disagree with the file. A sandbox provider's:
   "operations": ["create", "get", "list", "start", "stop", "delete"],
   "ssh": {"key": "none", "access": true, "port": "reply"},
   "create": ["cpu", "memory_mb", "name", "snapshot"],
-  "settings": ["region"], "size": "limits", "lifetime": false,
+  "settings": ["region"], "size": "limits", "lifetime": null,
   "states": ["error", "gone", "started", "starting", "stopped", "stopping"],
   "list": {"paged": true, "all_mine": false},
   "auth": {"type": "header", "header": "X-API-Key"},
@@ -196,15 +196,22 @@ disagree with the file. A sandbox provider's:
 - `create`: the placeholders the create call fills, so conch asks only for
   what the provider takes
 - `settings`, `size` (`names`, `limits`, the `plan`'s, or `null`),
-  `lifetime`: format 4's choices
+  `lifetime` (`{default_mins, max_mins}`, or `null`): format 4's choices
 - `states`: the states of conch's the provider can report
 - `needs`: what the person supplies — `key`, and for an integration a
   `base_url` (self-hosted) or a `user` (basic auth)
 
 An integration's has `operations` (also kept at the top of its entry, for
-older conches), `auth`, `needs`, `detect` (how conch recognises a project
-that uses it), `states` and `follow` (whether it fetches from
-`follow_hosts`). A built-in has none: conch's own code runs it.
+older conches), `auth` (from `[auth]`, else a top-level `auth_header`),
+`needs`, `detect` (which ways conch recognises a project that uses it) and
+`detect_on` (what those match: `{"files": [".circleci/config.yml"]}`),
+`states` and `follow` (whether it fetches from `follow_hosts`). A built-in
+has none: conch's own code runs it.
+
+A provider listed under `disabled` says `why` (`"no ssh yet"`).
+`capabilities_version` at the top of the index goes up when a field
+changes meaning, not when one is added; absent is 1, where `lifetime` was
+true or false.
 
 ### Schemas
 

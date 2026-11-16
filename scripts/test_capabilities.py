@@ -180,7 +180,7 @@ class SandboxCapabilitiesTest(Isolated):
             "create": ["cpu", "memory_mb", "name", "snapshot"],
             "settings": [],
             "size": None,
-            "lifetime": False,
+            "lifetime": None,
             "states": ["gone", "started", "starting", "stopped"],
             "list": {"paged": True, "all_mine": False},
             "auth": {"type": "header", "header": "X-API-Key"},
@@ -194,7 +194,9 @@ class SandboxCapabilitiesTest(Isolated):
                                               "snapshot_save", "snapshot_list", "preview", "usage"])
         self.assertEqual(caps["ssh"], {"key": "authorize", "access": False, "port": "endpoint"})
         self.assertEqual(caps["create"], ["name", "region", "size", "ttl_secs"])
-        self.assertEqual((caps["settings"], caps["size"], caps["lifetime"]), (["region"], "names", True))
+        self.assertEqual((caps["settings"], caps["size"]), (["region"], "names"))
+        # What the catalog can say before install: "1 h, at most 10 h".
+        self.assertEqual(caps["lifetime"], {"default_mins": 60, "max_mins": 600})
         self.assertEqual(caps["list"], {"paged": False, "all_mine": True})
         self.assertEqual(caps["auth"], {"type": "header", "header": "Authorization"})
 
@@ -207,7 +209,10 @@ class SandboxCapabilitiesTest(Isolated):
 
     def test_a_provider_that_is_off_has_no_ssh(self):
         self.provider(GOOD.split("[ssh]")[0], meta={**META, "enabled": False})
-        self.assertIsNone(self.entry("acme")["capabilities"]["ssh"])
+        e = self.entry("acme")
+        self.assertIsNone(e["capabilities"]["ssh"])
+        # Said, not assumed: another reason may come.
+        self.assertEqual(e["why"], "no ssh yet")
 
     def test_a_fixed_port(self):
         self.provider(FULL.replace('port = "{reply.port}"', "port = 2222"))
@@ -226,6 +231,7 @@ class IntegrationCapabilitiesTest(Isolated):
             "auth": {"type": "bearer"},
             "needs": ["key"],
             "detect": ["checks", "files"],
+            "detect_on": {"files": [".acme.yml"], "checks": ["acme/*"]},
             "states": ["fail", "pass"],
             "follow": False,
         })
@@ -250,6 +256,28 @@ class IntegrationCapabilitiesTest(Isolated):
         caps = self.entry("hook")["capabilities"]
         self.assertEqual((caps["operations"], caps["auth"], caps["detect"], caps["states"]),
                          (["send"], {"type": "url"}, [], []))
+        self.assertEqual(caps["detect_on"], {})
+
+    def test_a_key_sent_the_way_a_sandbox_file_sends_it(self):
+        # No [auth]: top-level auth_header and auth_value, as conch's
+        # integration format also takes.
+        self.integration(CI.replace('key_env = "ACME_TOKEN"', 'key_env = "ACME_TOKEN"\nauth_header = "X-Acme-Key"\nauth_value = "{key}"'))
+        self.assertEqual(self.entry("acme-ci")["capabilities"]["auth"], {"type": "header", "header": "X-Acme-Key"})
+
+    def test_a_tracker_that_lists_your_own(self):
+        tracker = ('format = 3\nkind = "tickets"\nname = "acme-tickets"\nlabel = "Acme"\napi = "https://api.acme.example"\n'
+                   'key_env = "ACME_TOKEN"\n\n[list]\ncall = "GET /t"\nitems = "t"\nkey = "id"\ntitle = "title"\n\n'
+                   '[mine]\ncall = "GET /t?me=1"\nitems = "t"\nkey = "id"\ntitle = "title"\n\n'
+                   '[get]\ncall = "GET /t/{ticket}"\nkey = "id"\ntitle = "title"\n')
+        self.integration(tracker, kind="tickets", name="acme-tickets")
+        e = self.entry("acme-tickets")
+        self.assertEqual(e["capabilities"]["operations"], ["list", "mine", "get"])
+        self.assertEqual(e["operations"], ["list", "mine", "get"])
+
+    def test_the_shape_has_a_version(self):
+        # 2: lifetime became its numbers; absent means 1.
+        self.integration(CI)
+        self.assertEqual(self.index()["capabilities_version"], 2)
 
 
 class SchemaTest(unittest.TestCase):
