@@ -17,7 +17,11 @@ jobs:
         with:
           python-version: "3.12"
       - name: Test the registry script
-        run: python -m unittest discover -s scripts
+        # jsonschema checks every file against schema/; without it those
+        # tests are skipped.
+        run: |
+          pip install --quiet jsonschema==4.23.0
+          python -m unittest discover -s scripts
       - name: Folders, meta.json, secrets and hosts
         env:
           # A provider's file sends everybody's key to its api host, so a
