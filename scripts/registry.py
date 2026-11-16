@@ -60,7 +60,11 @@ ICONS = ("icon.svg", "icon.png")
 FILES = {"provider.toml", "meta.json", "README.md", *ICONS}
 MAX_ICON = 32 << 10
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
-FORMATS = {1, 2, 3}
+FORMATS = {1, 2, 3, 4}
+# What a released conch from before the integrations reads, through the
+# old address (legacy/): format 4 is conch's own providers as files, which
+# those conches have built in and would refuse.
+LEGACY_FORMATS = {1, 2, 3}
 MAX_BYTES = 256 << 10
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 VERSION = re.compile(r"^\d+\.\d+\.\d+$")
@@ -277,6 +281,10 @@ def enabled(meta):
     return meta.get("enabled", True) is True
 
 
+NEWER = re.compile(r"this conch reads up to format")
+BUILT_IN = re.compile(r"is a provider conch has built in")
+
+
 def conch_check(conch="conch"):
     """conch sandbox provider check -offline on every sandbox provider. One
     that is off has no [ssh] by design, so conch's [ssh] problems are
@@ -288,6 +296,23 @@ def conch_check(conch="conch"):
         out = subprocess.run([conch, "sandbox", "provider", "check", "-offline", str(folder / "provider.toml")],
                              capture_output=True, text=True)
         said = [l.strip()[2:] for l in (out.stdout + out.stderr).splitlines() if l.strip().startswith("- ")]
+        # A file newer than this conch reads (format 4: conch's own
+        # providers as files) waits for a newer conch. Everything else this
+        # conch says of it comes from reading it as an older format — keys
+        # and placeholders it does not know yet — so none of it counts; the
+        # registry's own checks still ran.
+        newer = [p for p in said if NEWER.search(p)]
+        if newer:
+            print(f"::notice file=sandbox/{folder.name}/provider.toml::this conch does not read it yet: {newer[0]}")
+            continue
+        # Named for a provider this conch still has built in: that waits for
+        # a conch without it, but the rest of what it says still counts.
+        built_in = [p for p in said if BUILT_IN.search(p)]
+        if built_in:
+            print(f"::notice file=sandbox/{folder.name}/provider.toml::this conch does not read it yet: {built_in[0]}")
+        said = [p for p in said if not BUILT_IN.search(p)]
+        if out.returncode != 0 and not said and built_in:
+            continue
         left = [p for p in said if not (off and p.startswith("[ssh]"))]
         if out.returncode != 0 and (not off or left or not said):
             problems += [f"{folder.name}: {p}" for p in left] or [f"{folder.name}: conch check failed: {(out.stdout + out.stderr).strip()}"]
@@ -455,7 +480,9 @@ def build(out):
             raise SystemExit("\n".join(problems))
         raw = (folder / "provider.toml").read_bytes()
         (out / "providers" / f"{folder.name}.toml").write_bytes(raw)
-        (out / "legacy" / "providers" / f"{folder.name}.toml").write_bytes(raw)
+        legacy_too = f.get("format", 1) in LEGACY_FORMATS
+        if legacy_too:
+            (out / "legacy" / "providers" / f"{folder.name}.toml").write_bytes(raw)
         api, ssh_host = hosts(f)
         old = {
             "name": folder.name,
@@ -483,11 +510,13 @@ def build(out):
             (out / path).write_bytes(data)
             new.update(icon=path, icon_sha256=hashlib.sha256(data).hexdigest())
         if enabled(meta):
-            legacy.append(old)
+            if legacy_too:
+                legacy.append(old)
             entries.append(new)
         else:
             # Off: listed apart, so no conch offers one it cannot reach.
-            legacy_off.append({**old, "enabled": False})
+            if legacy_too:
+                legacy_off.append({**old, "enabled": False})
             off.append({**new, "enabled": False, "tier": "off"})
     for kind, folder in integration_folders():
         f, meta, problems = load_integration(kind, folder)

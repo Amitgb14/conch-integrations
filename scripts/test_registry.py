@@ -1,5 +1,7 @@
 """Tests for registry.py: python3 -m unittest discover -s scripts"""
 
+import contextlib
+import io
 import json
 import os
 import re
@@ -92,7 +94,7 @@ class RegistryTest(unittest.TestCase):
     def test_the_file(self):
         for change, want in (
             (('name = "acme"', 'name = "other"'), "the folder is 'acme'"),
-            (("format = 2", "format = 4"), "format 4"),
+            (("format = 2", "format = 5"), "format 5"),
             (("https://api.acme.example", "http://api.acme.example"), "https://"),
             (("https://api.acme.example", "https://localhost"), "not this computer"),
             (("[ssh]", "[ssh"), "provider.toml:"),
@@ -158,6 +160,23 @@ class RegistryTest(unittest.TestCase):
         self.write("newone", toml=GOOD.replace("api.acme.example", "api.new.example"))
         self.write()
         self.assertEqual(self.problems("main"), "")
+
+    def test_format4_kept_from_legacy(self):
+        # Format 4 is conch's own providers as files (settings, sizes,
+        # snapshots): accepted here, and left out of legacy/, whose readers
+        # are released conches that refuse it — and that have those
+        # providers built in.
+        self.write()
+        self.write("newer", toml=GOOD.replace("format = 2", "format = 4").replace('name = "acme"', 'name = "newer"'))
+        self.assertEqual(self.problems(), "")
+        site = self.root / "site"
+        entries = registry.build(site)
+        self.assertEqual([(e["name"], e["format"]) for e in entries], [("acme", 2), ("newer", 4)])
+        legacy = json.loads((site / "legacy" / "index.json").read_text())
+        self.assertEqual([p["name"] for p in legacy["providers"]], ["acme"])
+        self.assertFalse((site / "legacy" / "providers" / "newer.toml").exists())
+        self.write("newest", toml=GOOD.replace("format = 2", "format = 5").replace('name = "acme"', 'name = "newest"'))
+        self.assertIn("format 5", self.problems())
 
     def test_build(self):
         self.write()
@@ -292,6 +311,26 @@ class RegistryTest(unittest.TestCase):
         self.assertIn("[states]", "\n".join(problems))
         problems, _ = run({"acme": (1, ssh_only), "dark": (1, ssh_only)})
         self.assertEqual([p.split(":")[0] for p in problems], ["acme", "acme"])
+        # A file newer than the conch checking it (format 4, conch's own
+        # providers as files) or named for a provider that conch still has
+        # built in waits for a newer conch: not a problem, but said.
+        newer = "x:\n  - format 4: this conch reads up to format 3; update conch to use it\n"
+        builtin = "x:\n  - name \"daytona\" is a provider conch has built in\n"
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            problems, _ = run({"acme": (1, newer), "dark": (1, builtin + ssh_only)})
+        self.assertEqual(problems, [])
+        self.assertEqual(out.getvalue().count("::notice"), 2)
+        # What an older conch says of a newer file is a misreading — format
+        # 4's keys and placeholders are unknown to it — so none of it counts.
+        misread = newer + "  - unknown key setting\n  - [create] body: unknown placeholder {image}\n"
+        with contextlib.redirect_stdout(io.StringIO()):
+            problems, _ = run({"acme": (1, misread), "dark": (0, "")})
+        self.assertEqual(problems, [])
+        # A built-in's name waits, but the rest of what conch says still counts.
+        with contextlib.redirect_stdout(io.StringIO()):
+            problems, _ = run({"acme": (1, builtin + "  - [states] maps nothing to started\n"), "dark": (0, "")})
+        self.assertEqual(problems, ["acme: [states] maps nothing to started"])
 
 
 CI = '''format = 3
