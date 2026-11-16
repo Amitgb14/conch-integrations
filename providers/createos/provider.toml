@@ -1,0 +1,62 @@
+format = 2
+name = "createos"
+label = "CreateOS"
+# CreateOS Sandbox (NodeOps): Firecracker microVMs. Every reply is a JSend
+# envelope, {"status": "success", "data": {...}}.
+api = "https://api.sb.createos.sh"
+key_env = "CREATEOS_API_KEY"
+auth_header = "X-Api-Key"
+auth_value = "{key}"
+docs = "https://createos.sh/docs/Sandbox/REST-API/Sandboxes.md"
+adapted_by = "claude"
+adapted = "2026-11-15"
+note = """A CreateOS sandbox (devbox:1, Ubuntu 24.04, 2 vCPU / 4 GiB) in the account's default region. Make an API key at https://createos.sh/app/profile and put it in CREATEOS_API_KEY. Stop pauses it (memory and disk snapshotted, host freed); start resumes it. Not reachable with plain ssh: CreateOS's ssh gateway (gateway.sb.createos.sh:2222) is a jump host to sshd inside the VM, which its CLI starts over the exec API."""
+
+[create]
+call = "POST /v1/sandboxes"
+# shape and rootfs are required strings from GET /v1/shapes and GET /v1/rootfs;
+# conch's cpu/memory cannot be mapped onto the shape catalog, so both are fixed.
+body = { name = "{name}", shape = "s-2vcpu-4gb", rootfs = "devbox:1", envs = "{env}", auto_pause_after_seconds = "{auto_stop_secs}" }
+id = "data.id"
+
+[get]
+call = "GET /v1/sandboxes/{id}"
+item = "data"
+state = "status"
+name = "name"
+cpu = "vcpu"
+memory_mb = "mem_mib"
+disk_mb = "disk_mib"
+created = "created_at"
+
+[list]
+# Offset pagination only (limit/offset, max 500 a page); no cursor, so one
+# page of 500.
+call = "GET /v1/sandboxes?limit=500"
+items = "data.data"
+id = "id"
+mine = "conch-"
+
+[start]
+call = "POST /v1/sandboxes/{id}/resume"
+[stop]
+call = "POST /v1/sandboxes/{id}/pause"
+[delete]
+call = "DELETE /v1/sandboxes/{id}"
+
+[states]
+creating = "starting"
+running = "started"
+pausing = "stopping"
+paused = "stopped"
+resuming = "starting"
+forking = "stopped"      # a paused source while it is being copied
+error = "error"          # resume/fork exhausted retries; resume again to retry
+destroying = "stopping"
+destroyed = "gone"
+failed = "error"
+
+# [ssh]
+# No plain ssh yet: its gateway (gateway.sb.createos.sh:2222) is a jump host to an sshd its CLI starts over exec.
+# conch cloud will reach it through a public URL; until then this provider is
+# off (meta.json "enabled": false).
