@@ -228,6 +228,20 @@ class RepositoryTest(unittest.TestCase):
     def test_the_providers_here_are_good(self):
         self.assertEqual(registry.check(), [])
 
+    def test_instabox_sends_the_headers_its_api_requires(self):
+        # Mutating POSTs and DELETEs need an Idempotency-Key, and a machine
+        # delete names the machine in X-Confirm-Delete, or InstaBox answers
+        # 409 (https://instabox.sh/docs/api-reference/introduction.md).
+        f = tomllib.loads((registry.PROVIDERS / "instabox" / "provider.toml").read_text())
+        self.assertEqual(f.get("format"), 3)
+        top = f.get("headers", {}).get("Idempotency-Key")
+        for call in ("create", "start", "stop", "delete"):
+            self.assertEqual(f[call].get("headers", {}).get("Idempotency-Key", top), "{uuid}", call)
+        self.assertEqual(f["ssh"]["access"].get("headers", {}).get("Idempotency-Key", top), "{uuid}", "ssh.access")
+        for call in ("get", "list"):
+            self.assertIn(f[call].get("headers", {}).get("Idempotency-Key", top), (None, ""), call)
+        self.assertEqual(f["delete"]["headers"]["X-Confirm-Delete"], "{id}")
+
     def test_the_readme_lists_every_provider(self):
         # Rows of the README's table: | Label | `name` | live check |
         readme = (registry.ROOT / "README.md").read_text()
