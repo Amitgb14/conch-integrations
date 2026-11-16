@@ -1,0 +1,57 @@
+format = 2
+name = "gravixlayer"
+label = "Gravix Layer"
+# Gravix Layer calls its sandboxes "runtimes"; they live under /v1/agents/runtime.
+api = "https://api.gravixlayer.ai"
+key_env = "GRAVIXLAYER_API_KEY"
+docs = "https://docs.gravixlayer.ai/openapi.json"
+adapted_by = "claude"
+adapted = "2026-11-15"
+note = """A Gravix Layer runtime from the base-small template, in the cloud and region the API key's project defaults to (the SDKs default to aws / us-east-1). Make a project API key (gl_sk_...) in the console and put it in GRAVIXLAYER_API_KEY. Stop pauses it, keeping processes and files; start resumes it. A runtime is ended at its timeout, the server default unless set. Not reachable with plain ssh yet: its ssh (POST /v1/agents/runtime/{id}/ssh/enable) hands out a server-made private key and a per-runtime port, and takes no public key."""
+
+[create]
+call = "POST /v1/agents/runtime"
+# Runtimes have no name field: metadata is a free object returned on every
+# read, so conch's name goes in metadata.name (guess: the docs only show
+# metadata={"project": ...}). Size comes from the template; template is
+# required on REST unless snapshot is set, so {snapshot} cannot replace it.
+body = { template = "base-small", metadata = { name = "{name}" }, env_vars = "{env}", wait = false }
+id = "runtime_id"
+
+[get]
+call = "GET /v1/agents/runtime/{id}"
+state = "status"
+name = "metadata.name"
+reason = "error_message"
+cpu = "cpu_count"
+memory_mb = "memory_mb"
+disk_mb = "disk_size_mb"
+created = "started_at"
+
+[list]
+# Offset pagination only (limit up to 200, offset); one page of 200.
+call = "GET /v1/agents/runtime?limit=200"
+items = "runtimes"
+id = "runtime_id"
+mine = "conch-"
+
+[start]
+call = "POST /v1/agents/runtime/{id}/resume"
+[stop]
+call = "POST /v1/agents/runtime/{id}/pause"
+[delete]
+call = "DELETE /v1/agents/runtime/{id}"
+
+[states]
+# "Lifecycle state: creating|running|paused|stopped|failed|deleted."
+creating = "starting"
+running = "started"
+paused = "stopped"
+stopped = "stopped"
+failed = "error"
+deleted = "gone"
+
+# [ssh]
+# No plain ssh yet: its ssh/enable hands out a server-made private key and a per-runtime port.
+# conch cloud will reach it through a public URL; until then this provider is
+# off (meta.json "enabled": false).

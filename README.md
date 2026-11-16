@@ -13,6 +13,7 @@ reader of its own; nothing here is code.
 | CreateOS | `createos` | off: no ssh yet |
 | DigitalOcean | `digitalocean` | not yet |
 | Freestyle | `freestyle` | off: no ssh yet |
+| Gravix Layer | `gravixlayer` | off: no ssh yet |
 | Hetzner Cloud | `hetzner` | not yet |
 | InstaBox | `instabox` | checked 2026-11-15 |
 | Namespace | `namespace` | not yet |
