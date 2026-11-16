@@ -9,6 +9,7 @@ reader of its own; nothing here is code.
 | Provider | Name | Live check |
 | --- | --- | --- |
 | DigitalOcean | `digitalocean` | not yet |
+| Freestyle | `freestyle` | off: no ssh yet |
 | Hetzner Cloud | `hetzner` | not yet |
 | InstaBox | `instabox` | checked 2026-11-15 |
 | Namespace | `namespace` | not yet |
@@ -41,7 +42,6 @@ listed because conch has them built in.
 | Beam | its VMs take ssh, but are made only through its CLI and SDK |
 | CodeSandbox | no ssh: a VM is reached through a websocket agent |
 | Cloudflare Sandbox | no hosted API: it is a Workers binding, with no ssh |
-| Freestyle | ssh takes a token made in three calls on an identity, which one access call cannot do |
 | Upstash Box | ssh fits, but the HTTP API is undocumented and its list is a bare array |
 | Isorun | no ssh: websocket shells only, and a run takes no name |
 | Superserve | no ssh: exec, files and preview ports only |
