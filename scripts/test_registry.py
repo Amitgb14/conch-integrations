@@ -3,7 +3,9 @@
 import json
 import os
 import subprocess
+import re
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -163,6 +165,26 @@ class RegistryTest(unittest.TestCase):
         self.write("gamma", meta={})
         with self.assertRaises(SystemExit):
             registry.build(self.root / "site2")
+
+
+class RepositoryTest(unittest.TestCase):
+    """The providers committed here, rather than ones made up for a test."""
+
+    def test_the_providers_here_are_good(self):
+        self.assertEqual(registry.check(), [])
+
+    def test_the_readme_lists_every_provider(self):
+        # Rows of the README's table: | Label | `name` | live check |
+        readme = (registry.ROOT / "README.md").read_text()
+        listed = {}
+        for label, name, live in re.findall(r"^\| ([^|]+?) \| `([a-z0-9-]+)` \| ([^|]+?) \|$", readme, re.M):
+            listed[name] = (label, live)
+        self.assertEqual(sorted(listed), [f.name for f in registry.folders()])
+        for folder in registry.folders():
+            f = tomllib.loads((folder / "provider.toml").read_text())
+            checked = json.loads((folder / "meta.json").read_text())["checked"]
+            want = (f.get("label") or folder.name, f"checked {checked['date']}" if checked else "not yet")
+            self.assertEqual(listed[folder.name], want, folder.name)
 
 
 if __name__ == "__main__":

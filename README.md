@@ -10,6 +10,7 @@ reader of its own; nothing here is code.
 | --- | --- | --- |
 | DigitalOcean | `digitalocean` | not yet |
 | Hetzner Cloud | `hetzner` | not yet |
+| InstaBox | `instabox` | checked 2026-11-15 |
 
 The list as conch reads it is published at
 <https://amitgb14.github.io/conch-sandbox-providers/index.json>.
