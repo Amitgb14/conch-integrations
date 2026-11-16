@@ -9,6 +9,7 @@ reader of its own; nothing here is code.
 | Provider | Name | Live check |
 | --- | --- | --- |
 | Agent37 | `agent37` | off: no ssh yet |
+| Archil | `archil` | off: no ssh yet |
 | briq | `briq` | off: no ssh yet |
 | CreateOS | `createos` | off: no ssh yet |
 | DigitalOcean | `digitalocean` | not yet |
