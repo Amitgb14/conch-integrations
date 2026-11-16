@@ -1,0 +1,58 @@
+format = 2
+name = "briq"
+label = "briq"
+api = "https://api.briq.cloud"
+key_env = "BRIQ_API_KEY"
+docs = "https://api.briq.cloud/v1/openapi.json"
+adapted_by = "claude"
+adapted = "2026-11-15"
+note = """A briq from the sandbox recipe (a Linux microVM, size medium: 2 shared vCPU / 4 GB), hosted in the EU by default. Sign in at https://briq.cloud, make a key on the dashboard's API keys page and put it in BRIQ_API_KEY. A briq goes to sleep after an hour unused (wakes on the next call); stop keeps its disk. Names are lowercase letters, digits and -, at most 32 characters. Not reachable with plain ssh: its only shell is a WebSocket terminal (GET /v1/briqs/{id}/shell)."""
+
+[create]
+call = "POST /v1/briqs"
+# The recipe form of the create body. size is fixed: briq sizes are names
+# (pico..xlarge), not cpu/memory. sleep is a string ("30m"), so conch's
+# {auto_stop_secs} cannot go there. wait = false answers while it is creating.
+body = { recipe = "sandbox", name = "{name}", size = "medium", wait = false }
+id = "briqs.0.id"
+
+[get]
+call = "GET /v1/briqs/{id}"
+item = "briq"
+state = "state"
+name = "name"
+reason = "error"
+created = "createdAt"
+
+[list]
+# Not paginated: one answer with every briq of the team.
+call = "GET /v1/briqs"
+items = "briqs"
+id = "id"
+mine = "conch-"
+
+[start]
+call = "POST /v1/briqs/{id}/start"
+[stop]
+call = "POST /v1/briqs/{id}/stop"
+body = { wait = false }
+[delete]
+call = "DELETE /v1/briqs/{id}?wait=false"
+
+[states]
+creating = "starting"
+running = "started"
+stopping = "stopping"
+stopped = "stopped"
+sleeping = "stopped"      # machine stopped, disk kept; the next call wakes it
+starting = "starting"
+resizing = "starting"     # guess: on its way back to running at the new size
+moving = "starting"       # guess: a move into or out of a stack
+destroying = "stopping"
+destroyed = "gone"
+error = "error"
+
+# [ssh]
+# No plain ssh yet: its only shell is a WebSocket terminal (GET /v1/briqs/{id}/shell).
+# conch cloud will reach it through a public URL; until then this provider is
+# off (meta.json "enabled": false).
