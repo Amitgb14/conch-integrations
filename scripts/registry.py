@@ -3,6 +3,12 @@
 
     registry.py check [--base REF]   every provider, and host changes since REF
     registry.py build OUT            OUT/index.json and OUT/providers/NAME.toml
+    registry.py conch-check [CONCH]  conch's own check of every file
+
+A provider with no plain-ssh way in is still described, its API in full
+and its [ssh] left out, with "enabled": false in meta.json. conch cloud
+will reach such sandboxes through a public URL; until a conch can, the
+index lists them under "disabled", apart from the providers it offers.
 
 conch checks each file itself (conch sandbox provider check -offline);
 this checks what conch does not: the folder's shape, meta.json, that no
@@ -32,6 +38,7 @@ MAX_BYTES = 256 << 10
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 VERSION = re.compile(r"^\d+\.\d+\.\d+$")
 META_KEYS = {"adapted_by", "adapted", "docs", "conch", "checked"}
+OPTIONAL_META = {"enabled"}
 CHECKED_KEYS = {"date", "conch", "sandboxes"}
 
 # What a committed credential looks like. A provider file holds none —
@@ -109,7 +116,7 @@ def load(folder):
     if not isinstance(meta, dict):
         say("meta.json: an object")
         return f, None, problems
-    for k in sorted(set(meta) - META_KEYS):
+    for k in sorted(set(meta) - META_KEYS - OPTIONAL_META):
         say(f"meta.json: unknown key {k}")
     for k in sorted(META_KEYS - set(meta)):
         say(f"meta.json: no {k}")
@@ -121,6 +128,13 @@ def load(folder):
         say("meta.json docs: the https:// URL it was adapted from")
     if not VERSION.match(str(meta.get("conch", ""))):
         say("meta.json conch: the conch version it was written for, e.g. 0.1.10")
+    enabled = meta.get("enabled", True)
+    if not isinstance(enabled, bool):
+        say("meta.json enabled: true or false")
+    elif enabled and "ssh" not in f:
+        say('no [ssh]: conch reaches a sandbox over ssh; with none yet, set "enabled": false in meta.json')
+    elif not enabled and "ssh" in f:
+        say('has [ssh] but meta.json says "enabled": false; drop one')
     checked = meta.get("checked")
     if checked is not None:
         if not isinstance(checked, dict):
@@ -170,6 +184,27 @@ def check(base=None):
     return problems
 
 
+def enabled(meta):
+    return meta.get("enabled", True) is True
+
+
+def conch_check(conch="conch"):
+    """conch sandbox provider check -offline on every file. A provider that
+    is off has no [ssh] by design, so conch's [ssh] problems are expected
+    of it; anything else is a problem either way."""
+    problems = []
+    for folder in folders():
+        _, meta, _ = load(folder)
+        off = meta is not None and not enabled(meta)
+        out = subprocess.run([conch, "sandbox", "provider", "check", "-offline", str(folder / "provider.toml")],
+                             capture_output=True, text=True)
+        said = [l.strip()[2:] for l in (out.stdout + out.stderr).splitlines() if l.strip().startswith("- ")]
+        left = [p for p in said if not (off and p.startswith("[ssh]"))]
+        if out.returncode != 0 and (not off or left or not said):
+            problems += [f"{folder.name}: {p}" for p in left] or [f"{folder.name}: conch check failed: {(out.stdout + out.stderr).strip()}"]
+    return problems
+
+
 def build(out):
     out = Path(out)
     (out / "providers").mkdir(parents=True, exist_ok=True)
@@ -192,13 +227,15 @@ def build(out):
             "note": f.get("note", ""),
             "file": f"providers/{folder.name}.toml",
             "sha256": hashlib.sha256(raw).hexdigest(),
+            "enabled": enabled(meta),
             **{k: meta[k] for k in ("adapted_by", "adapted", "docs", "conch", "checked")},
         })
-    index = {"format": 1, "providers": entries}
+    index = {"format": 1, "providers": [e for e in entries if e["enabled"]],
+             "disabled": [e for e in entries if not e["enabled"]]}
     (out / "index.json").write_text(json.dumps(index, indent=2) + "\n")
     rows = "\n".join(
         f"<tr><td>{html.escape(e['label'])}</td><td><code>{html.escape(e['name'])}</code></td>"
-        f"<td>{html.escape(e['api_host'])}</td><td>{'checked ' + e['checked']['date'] if e['checked'] else 'not checked live yet'}</td></tr>"
+        f"<td>{html.escape(e['api_host'])}</td><td>{'off: no ssh yet' if not e['enabled'] else 'checked ' + e['checked']['date'] if e['checked'] else 'not checked live yet'}</td></tr>"
         for e in entries)
     (out / "index.html").write_text(f"""<!DOCTYPE html>
 <meta charset="utf-8"><title>conch sandbox providers</title>
@@ -224,6 +261,11 @@ def main(argv):
             return 1
         print(f"{len(folders())} providers, no problems")
         return 0
+    if len(argv) in (1, 2) and argv[0] == "conch-check":
+        problems = conch_check(*argv[1:])
+        for p in problems:
+            print(p, file=sys.stderr)
+        return 1 if problems else 0
     if len(argv) == 2 and argv[0] == "build":
         print(f"{len(build(argv[1]))} providers indexed")
         return 0

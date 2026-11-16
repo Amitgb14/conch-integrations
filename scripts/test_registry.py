@@ -57,7 +57,7 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(self.problems(), "")
         self.providers.mkdir()
         self.assertEqual(registry.build(self.root / "site"), [])
-        self.assertEqual(json.loads((self.root / "site" / "index.json").read_text()), {"format": 1, "providers": []})
+        self.assertEqual(json.loads((self.root / "site" / "index.json").read_text()), {"format": 1, "providers": [], "disabled": []})
 
     def test_the_folder(self):
         for name, want in (("Acme", "the folder's name"), ("daytona", "built in"), ("a", "the folder's name")):
@@ -166,6 +166,56 @@ class RegistryTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             registry.build(self.root / "site2")
 
+    def test_a_provider_without_ssh_is_off(self):
+        # Its API is described; its [ssh] waits for conch cloud's public URL.
+        no_ssh = GOOD.split("[ssh]")[0] + "# [ssh]\n# host = ...\n"
+        off = {**META, "enabled": False}
+        self.write("dark", toml=no_ssh, meta=off)
+        self.assertEqual(self.problems(), "")
+        for toml, meta, want in (
+            (GOOD, off, "has [ssh]"),
+            (no_ssh, META, "no [ssh]"),
+            (no_ssh, {**off, "enabled": "no"}, "enabled: true or false"),
+        ):
+            with self.subTest(want=want):
+                self.write("dark", toml=toml, meta=meta)
+                self.assertIn(want, self.problems())
+        # Off is published apart: a conch that cannot reach it never offers it.
+        self.write("dark", toml=no_ssh, meta=off)
+        self.write()
+        site = self.root / "site"
+        self.assertEqual([e["name"] for e in registry.build(site)], ["acme", "dark"])
+        index = json.loads((site / "index.json").read_text())
+        self.assertEqual([e["name"] for e in index["providers"]], ["acme"])
+        self.assertEqual([e["name"] for e in index["disabled"]], ["dark"])
+        self.assertTrue((site / "providers" / "dark.toml").exists())
+        self.assertIn("off: no ssh yet", (site / "index.html").read_text())
+
+    def test_conch_check(self):
+        no_ssh = GOOD.split("[ssh]")[0]
+        self.write("dark", toml=no_ssh, meta={**META, "enabled": False})
+        self.write()
+        ssh_only = "x:\n  - [ssh] host and user: no ssh\n  - [ssh] key \"\": account, authorize or none\n"
+
+        def run(outputs):
+            calls = []
+
+            def fake(cmd, **kw):
+                calls.append(cmd[-1])
+                rc, err = outputs[Path(cmd[-1]).parent.name]
+                return subprocess.CompletedProcess(cmd, rc, "", err)
+            with mock.patch.object(registry.subprocess, "run", fake):
+                return registry.conch_check("conch"), calls
+
+        problems, calls = run({"acme": (0, ""), "dark": (1, ssh_only)})
+        self.assertEqual(problems, [])
+        self.assertEqual(len(calls), 2)
+        # Anything beyond the missing [ssh] is still a problem, on or off.
+        problems, _ = run({"acme": (0, ""), "dark": (1, ssh_only + "  - [states] maps nothing to started\n")})
+        self.assertIn("[states]", "\n".join(problems))
+        problems, _ = run({"acme": (1, ssh_only), "dark": (1, ssh_only)})
+        self.assertEqual([p.split(":")[0] for p in problems], ["acme", "acme"])
+
 
 class RepositoryTest(unittest.TestCase):
     """The providers committed here, rather than ones made up for a test."""
@@ -182,8 +232,10 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(sorted(listed), [f.name for f in registry.folders()])
         for folder in registry.folders():
             f = tomllib.loads((folder / "provider.toml").read_text())
-            checked = json.loads((folder / "meta.json").read_text())["checked"]
-            want = (f.get("label") or folder.name, f"checked {checked['date']}" if checked else "not yet")
+            meta = json.loads((folder / "meta.json").read_text())
+            checked = meta["checked"]
+            live = f"checked {checked['date']}" if checked else "not yet"
+            want = (f.get("label") or folder.name, live if meta.get("enabled", True) else "off: no ssh yet")
             self.assertEqual(listed[folder.name], want, folder.name)
 
 

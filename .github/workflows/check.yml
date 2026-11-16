@@ -31,10 +31,7 @@ jobs:
         run: |
           go install github.com/Amitgb14/conch/cmd/conch@master
           export CONCH_HOME="$(mktemp -d)"
-          status=0
-          for f in providers/*/provider.toml; do
-            conch sandbox provider check -offline "$f" || status=1
-          done
-          exit $status
+          # A provider that is off has no [ssh] yet; the rest must be clean.
+          python scripts/registry.py conch-check
       - name: The index builds
         run: python scripts/registry.py build "$(mktemp -d)"

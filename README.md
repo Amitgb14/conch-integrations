@@ -16,6 +16,13 @@ reader of its own; nothing here is code.
 The list as conch reads it is published at
 <https://amitgb14.github.io/conch-sandbox-providers/index.json>.
 
+A provider marked **off** has an API conch can drive but no plain-ssh way
+into its sandboxes. Its file describes the API in full and leaves `[ssh]`
+out, and its `meta.json` says `"enabled": false`. conch cloud will reach
+such sandboxes through a public URL; until then the index lists them under
+`disabled`, apart from the providers conch offers, so no conch installs one
+it cannot connect to. A setting in conch will turn them on.
+
 ## Looked at, and why they are not here
 
 conch reaches every sandbox over plain ssh and drives it through an HTTP
@@ -76,7 +83,10 @@ By hand, a pull request needs the same two files; the format is in
 
 On every pull request:
 
-- conch's own check of the file (`conch sandbox provider check -offline`)
+- conch's own check of the file (`conch sandbox provider check -offline`),
+  where a provider that is off may lack only its `[ssh]`
+- `meta.json`'s `enabled` agrees with the file: off exactly when there is
+  no `[ssh]`
 - the folder holds only `provider.toml`, `meta.json` and an optional
   `README.md`, and the names agree
 - nothing that looks like a key, token or password is committed
@@ -93,6 +103,7 @@ hosts first.
 ```sh
 python3 -m unittest discover -s scripts       # Python 3.11+
 python3 scripts/registry.py check --base origin/main
+python3 scripts/registry.py conch-check        # needs conch on PATH
 python3 scripts/registry.py build _site
 ```
 
