@@ -26,25 +26,25 @@ it cannot connect to. A setting in conch will turn them on.
 
 ## Looked at, and why they are not here
 
-conch reaches every sandbox over plain ssh and drives it through an HTTP
-API, so a provider needs both. These, from the
+A provider needs an HTTP API that a provider file can describe; lacking
+only plain ssh, it is listed off. These, from the
 [ComputeSDK sandbox ratings](https://www.computesdk.com/benchmarks/sandboxes/ratings)
-(November 2026), have not got them yet. Daytona and Tensorlake are not
-listed because conch has them built in.
+(November 2026), cannot be described yet, even off. Daytona and Tensorlake
+are not listed because conch has them built in.
 
 | Provider | What stops it |
 | --- | --- |
-| E2B | ssh only through a websocket proxy (websocat ProxyCommand) |
+| E2B | its list is a bare JSON array, which `[list] items` cannot name; ssh only through a websocket proxy |
 | Novita | no documented HTTP API; ssh only through a websocket proxy, as E2B |
 | Modal | no HTTP API: its SDKs and CLI only |
-| Vercel Sandbox | no ssh: `sandbox ssh` is the CLI's own shell, ports are HTTPS only |
-| Blaxel | no ssh: ports are HTTPS only, ssh only through your own Tailscale |
+| Vercel Sandbox | stop takes a session id, every other call the sandbox's name; no ssh |
+| Blaxel | standby and resume are called on each sandbox's own host, not the API's; no ssh |
 | Beam | its VMs take ssh, but are made only through its CLI and SDK |
-| CodeSandbox | no ssh: a VM is reached through a websocket agent |
+| CodeSandbox | a sandbox has no state field; no ssh, only a websocket agent |
 | Cloudflare Sandbox | no hosted API: it is a Workers binding, with no ssh |
 | Upstash Box | ssh fits, but the HTTP API is undocumented and its list is a bare array |
-| Isorun | no ssh: websocket shells only, and a run takes no name |
-| Superserve | no ssh: exec, files and preview ports only |
+| Isorun | a run takes no name, and its list is undocumented; no ssh |
+| Superserve | its list is a bare JSON array; no ssh, only exec, files and preview ports |
 
 ## Using one
 
