@@ -34,6 +34,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -55,7 +56,10 @@ OPERATIONS = {"ci": ("runs", "failed_log", "rerun", "stats"),
               "tickets": ("list", "get", "comment", "link", "move"),
               "notify": ("send",)}
 NAME = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
-FILES = {"provider.toml", "meta.json", "README.md"}
+ICONS = ("icon.svg", "icon.png")
+FILES = {"provider.toml", "meta.json", "README.md", *ICONS}
+MAX_ICON = 32 << 10
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 FORMATS = {1, 2, 3}
 MAX_BYTES = 256 << 10
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -82,6 +86,58 @@ def hosts(f):
     return api, (f.get("ssh") or {}).get("host", "")
 
 
+def icon(folder):
+    """The provider's icon file, or None."""
+    return next((folder / i for i in ICONS if (folder / i).is_file()), None)
+
+
+def check_icon(folder, present, say):
+    """An icon is drawn by conch and on the site, so it must be a plain
+    picture: nothing that runs, and nothing fetched from elsewhere."""
+    have = [i for i in ICONS if i in present]
+    if len(have) > 1:
+        say("one icon: icon.svg or icon.png, not both")
+    for name in have:
+        raw = (folder / name).read_bytes()
+        if len(raw) > MAX_ICON:
+            say(f"{name}: over 32 KB")
+            continue
+        if name == "icon.png":
+            if not raw.startswith(PNG_MAGIC) or raw[12:16] != b"IHDR":
+                say("icon.png: not a PNG")
+                continue
+            width, height = int.from_bytes(raw[16:20], "big"), int.from_bytes(raw[20:24], "big")
+            if width != height:
+                say(f"icon.png: {width}x{height}; an icon is square")
+            elif width < 64:
+                say(f"icon.png: {width}px; at least 64px across")
+            continue
+        text = raw.decode("utf-8", "replace")
+        if re.search(r"<!(DOCTYPE|ENTITY)", text, re.I):
+            say("icon.svg: no DOCTYPE or ENTITY")
+            continue
+        try:
+            root = ET.fromstring(raw)
+        except ET.ParseError as e:
+            say(f"icon.svg: {e}")
+            continue
+        local = lambda tag: tag.rsplit("}", 1)[-1]
+        if local(root.tag) != "svg":
+            say("icon.svg: an <svg> at the top")
+        for el in root.iter():
+            tag = local(el.tag) if isinstance(el.tag, str) else ""
+            if tag in ("script", "foreignObject", "iframe", "embed", "object", "a"):
+                say(f"icon.svg: no <{tag}>")
+            for attr, value in el.attrib.items():
+                attr = local(attr)
+                if attr.lower().startswith("on"):
+                    say(f"icon.svg: no {attr} handler")
+                elif attr == "href" and not value.startswith("#"):
+                    say(f"icon.svg: href {value!r} reaches outside the file")
+        if "@import" in text or re.search(r"url\(\s*['\"]?(?!#)", text):
+            say("icon.svg: a url() or @import reaches outside the file")
+
+
 def load(folder):
     """The folder's provider file and meta, and what is wrong with them."""
     problems = []
@@ -91,7 +147,8 @@ def load(folder):
         say("the folder's name: lowercase letters, digits and -, starting with a letter")
     present = {p.name for p in folder.iterdir()}
     for extra in sorted(present - FILES):
-        say(f"{extra}: only provider.toml, meta.json and README.md belong here")
+        say(f"{extra}: only provider.toml, meta.json, an icon and README.md belong here")
+    check_icon(folder, present, say)
     for need in ("provider.toml", "meta.json"):
         if need not in present:
             say(f"no {need}")
@@ -417,6 +474,14 @@ def build(out):
         # conch's sandbox installer reads, beside the ones every kind has.
         new = {**old, "kind": "sandbox", "version": 1, "hosts": {"api": api, "ssh": ssh_host},
                "tier": "verified" if meta.get("checked") else "community"}
+        pic = icon(folder)
+        if pic:
+            # Served beside the index, and hashed as the file is.
+            (out / "icons").mkdir(exist_ok=True)
+            data = pic.read_bytes()
+            path = f"icons/{folder.name}{pic.suffix}"
+            (out / path).write_bytes(data)
+            new.update(icon=path, icon_sha256=hashlib.sha256(data).hexdigest())
         if enabled(meta):
             legacy.append(old)
             entries.append(new)
@@ -469,12 +534,13 @@ def build(out):
     key = os.environ.get("CONCH_REGISTRY_SIGNING_KEY", "").strip()
     if key:
         (out / "index.json.sig").write_text(sign(key, data) + "\n")
+    pic = lambda e: f'<img src="{html.escape(e["icon"])}" alt="" width="20" height="20"> ' if e.get("icon") else ""
     rows = "\n".join(
-        f"<tr><td>{html.escape(e['label'])}</td><td>{html.escape(e['kind'])}</td><td><code>{html.escape(e['name'])}</code></td>"
+        f"<tr><td>{pic(e)}{html.escape(e['label'])}</td><td>{html.escape(e['kind'])}</td><td><code>{html.escape(e['name'])}</code></td>"
         f"<td>{html.escape('built into conch' if e.get('builtin') else (e['hosts']['api'] or 'your own server'))}</td><td>{'checked ' + e['checked']['date'] if e.get('checked') else 'not checked live yet'}</td></tr>"
         for e in entries)
     rows += "".join(
-        f"\n<tr><td>{html.escape(e['label'])}</td><td>sandbox</td><td><code>{html.escape(e['name'])}</code></td>"
+        f"\n<tr><td>{pic(e)}{html.escape(e['label'])}</td><td>sandbox</td><td><code>{html.escape(e['name'])}</code></td>"
         f"<td>{html.escape(e['hosts']['api'])}</td><td>off: no ssh yet</td></tr>"
         for e in off)
     (out / "index.html").write_text(f"""<!DOCTYPE html>

@@ -23,7 +23,19 @@ host = "{reply.server.ip}"
 user = "root"
 '''
 
-META = {"adapted_by": "claude", "adapted": "2026-11-08", "docs": "https://docs.acme.example/api",
+SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><path fill="#000" d="M0 0h32v32H0z"/></svg>'
+
+
+def png(width, height):
+    """Enough of a PNG for the checker: the signature and an IHDR."""
+    import struct
+    import zlib
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
+    chunk = b"IHDR" + ihdr
+    return b"\x89PNG\r\n\x1a\n" + struct.pack(">I", len(ihdr)) + chunk + struct.pack(">I", zlib.crc32(chunk))
+
+
+META = {"adapted_by":"claude", "adapted": "2026-11-08", "docs": "https://docs.acme.example/api",
         "conch": "0.1.10", "checked": None}
 
 
@@ -174,6 +186,54 @@ class RegistryTest(unittest.TestCase):
         self.write("gamma", meta={})
         with self.assertRaises(SystemExit):
             registry.build(self.root / "site2")
+
+    def test_an_icon(self):
+        # The provider's own icon, from its website: icon.svg or icon.png.
+        folder = self.write(extra={"icon.svg": SVG})
+        self.assertEqual(self.problems(), "")
+        site = self.root / "site"
+        registry.build(site)
+        acme = json.loads((site / "index.json").read_text())["entries"][0]
+        import hashlib
+        self.assertEqual((acme["icon"], acme["icon_sha256"]), ("icons/acme.svg", hashlib.sha256(SVG.encode()).hexdigest()))
+        self.assertEqual((site / "icons" / "acme.svg").read_text(), SVG)
+        self.assertIn('<img src="icons/acme.svg"', (site / "index.html").read_text())
+        (folder / "icon.svg").unlink()
+        (folder / "icon.png").write_bytes(png(64, 64))
+        self.assertEqual(self.problems(), "")
+        self.assertEqual(json.loads((registry.build(site) and site / "index.json").read_text())["entries"][0]["icon"], "icons/acme.png")
+        (folder / "icon.png").unlink()
+        # Without one the provider is still listed, with no icon.
+        self.assertEqual(self.problems(), "")
+        self.assertNotIn("icon", registry.build(self.root / "site3")[0])
+
+    def test_a_bad_icon(self):
+        # An icon is shown in conch and on the site, so it may not run or
+        # fetch anything: no script, no handler, no outside reference.
+        bad_svgs = (
+            (SVG.replace("<path", "<script>alert(1)</script><path"), "script"),
+            (SVG.replace("<path", '<path onload="alert(1)"'), "onload"),
+            (SVG.replace("<path", '<image href="https://evil.example/x.png"/><path'), "href"),
+            (SVG.replace("<path", '<foreignObject><p>hi</p></foreignObject><path'), "foreignObject"),
+            (SVG.replace("<path", '<style>@import url(https://evil.example/a.css);</style><path'), "outside"),
+            (SVG.replace("<path", '<path style="fill:url(https://evil.example/#a)"'), "outside"),
+            ('<!DOCTYPE svg [<!ENTITY a "aaaa">]>' + SVG, "DOCTYPE"),
+            ("<html/>", "an <svg>"),
+            ("<svg", "icon.svg:"),
+            (SVG.replace("</svg>", "<!--" + "x" * (40 << 10) + "--></svg>"), "over 32 KB"),
+        )
+        for svg, want in bad_svgs:
+            with self.subTest(want=want):
+                self.write(extra={"icon.svg": svg})
+                self.assertIn(want, self.problems())
+        (self.providers / "acme" / "icon.svg").write_text(SVG)
+        (self.providers / "acme" / "icon.png").write_bytes(png(64, 64))
+        self.assertIn("icon.svg or icon.png, not both", self.problems())
+        (self.providers / "acme" / "icon.svg").unlink()
+        for raw, want in ((b"GIF89a", "not a PNG"), (png(64, 32), "square"), (png(16, 16), "at least 64")):
+            with self.subTest(want=want):
+                (self.providers / "acme" / "icon.png").write_bytes(raw)
+                self.assertIn(want, self.problems())
 
     def test_format_3(self):
         # A port read from [ssh.access]'s reply, and headers: conch's format 3.
@@ -402,6 +462,10 @@ class RepositoryTest(unittest.TestCase):
         for call in ("get", "list"):
             self.assertIn(f[call].get("headers", {}).get("Idempotency-Key", top), (None, ""), call)
         self.assertEqual(f["delete"]["headers"]["X-Confirm-Delete"], "{id}")
+
+    def test_every_provider_here_has_its_icon(self):
+        for folder in registry.folders():
+            self.assertTrue({"icon.svg", "icon.png"} & {p.name for p in folder.iterdir()}, folder.name)
 
     def test_the_readme_lists_every_provider(self):
         # Rows of the README's sandbox table: | Label | `name` | live check |
