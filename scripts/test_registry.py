@@ -72,7 +72,7 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(self.problems(), "")
         self.providers.mkdir()
         self.assertEqual(registry.build(self.root / "site"), [])
-        self.assertEqual(json.loads((self.root / "site" / "index.json").read_text()), {"format": 2, "entries": [], "disabled": []})
+        self.assertEqual(json.loads((self.root / "site" / "index.json").read_text()), {"format": 2, "kinds": [], "entries": [], "disabled": []})
         self.assertEqual(json.loads((self.root / "site" / "legacy" / "index.json").read_text()), {"format": 1, "providers": [], "disabled": []})
 
     def test_the_folder(self):
@@ -480,6 +480,65 @@ class IntegrationTest(unittest.TestCase):
         with mock.patch.dict(os.environ, {"CONCH_REGISTRY_SIGNING_KEY": "short"}):
             with self.assertRaises(SystemExit):
                 registry.build(self.root / "site3")
+
+
+    def test_icons_for_every_kind(self):
+        # An integration carries its service's icon as a sandbox provider
+        # does, served beside the index and hashed.
+        self.write(extra={"icon.svg": SVG})
+        self.assertEqual(self.problems(), "")
+        site = self.root / "site"
+        registry.build(site)
+        e = next(e for e in json.loads((site / "index.json").read_text())["entries"] if e["name"] == "acme-ci")
+        self.assertEqual(e["icon"], "icons/acme-ci.svg")
+        import hashlib
+        self.assertEqual(e["icon_sha256"], hashlib.sha256(SVG.encode()).hexdigest())
+        self.assertEqual((site / "icons" / "acme-ci.svg").read_text(), SVG)
+        # The same rules: nothing that runs.
+        self.write(extra={"icon.svg": SVG.replace("<path", '<path onload="x()"')})
+        self.assertIn("onload", self.problems())
+
+    def test_builtin_icon_folders(self):
+        # conch's own integrations have a folder under their kind holding
+        # only an icon: the directory says the kind, as for every other.
+        (self.root / "builtin.json").write_text(json.dumps([
+            {"kind": "host", "name": "github", "label": "GitHub", "docs": "https://cli.github.com"}]))
+        folder = self.root / "host" / "github"
+        folder.mkdir(parents=True)
+        (folder / "icon.svg").write_text(SVG)
+        self.assertEqual(self.problems(), "")
+        site = self.root / "site"
+        registry.build(site)
+        e = next(e for e in json.loads((site / "index.json").read_text())["entries"] if e["name"] == "github")
+        self.assertTrue(e["builtin"])
+        self.assertEqual(e["icon"], "icons/github.svg")
+        # A folder there with anything else, or under another kind, is wrong.
+        (folder / "integration.toml").write_text(CI)
+        self.assertIn("host/github", self.problems())
+        (folder / "integration.toml").unlink()
+        (self.root / "ci" / "github").mkdir(parents=True)
+        (self.root / "ci" / "github" / "icon.svg").write_text(SVG)
+        self.assertIn("github", self.problems())
+
+    def test_kinds_from_directories(self):
+        # The kinds are the directories, in kinds.json's order with its
+        # names; a directory it does not name is still a kind.
+        self.write()
+        self.write("acme-deploy", toml=CI.replace('kind = "ci"', 'kind = "deploy"'), kind="deploy")
+        (self.root / "kinds.json").write_text(json.dumps([
+            {"kind": "sandbox", "label": "Sandboxes", "about": "machines in the cloud for agents"},
+            {"kind": "ci", "label": "CI", "about": "what runs a branch's checks"}]))
+        self.assertEqual(self.problems(), "")
+        site = self.root / "site"
+        registry.build(site)
+        kinds = json.loads((site / "index.json").read_text())["kinds"]
+        self.assertEqual([(k["kind"], k["label"]) for k in kinds], [("ci", "CI"), ("deploy", "Deploy")])
+        self.assertEqual(kinds[0]["about"], "what runs a branch's checks")
+        # kinds.json naming a kind twice, or without a label, is wrong.
+        (self.root / "kinds.json").write_text(json.dumps([{"kind": "ci", "label": "CI"}, {"kind": "ci", "label": "CI"}]))
+        self.assertIn("kinds.json", self.problems())
+        (self.root / "kinds.json").write_text(json.dumps([{"kind": "ci"}]))
+        self.assertIn("kinds.json", self.problems())
 
 
 class RepositoryTest(unittest.TestCase):
