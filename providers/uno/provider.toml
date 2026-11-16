@@ -58,8 +58,10 @@ failed = "error"        # guess
 deleted = "gone"        # guess
 
 # [ssh]
-# Uno boxes take plain ssh, with the key given at create, but on a port
-# allocated per box, which [ssh] port cannot read from a reply:
-#   ssh -p <port> uno@<name>.uno4.dev
-# Off (meta.json "enabled": false) until conch can take the port from the
-# box, or conch cloud reaches it through a public URL.
+# Uno boxes take plain ssh, with the key given at create, on a port
+# allocated per box. A box gives it only inside a ready command string
+# (Box.ssh: "ssh -p 30000 uno@45.182.189.80"), which no reply path can
+# take apart; GET /api/v1/boxes/{id}/work/ssh has host, port and user as
+# fields, but is "Person only", not for an API key. Off (meta.json
+# "enabled": false) until one of those changes, or conch cloud reaches it
+# through a public URL.
