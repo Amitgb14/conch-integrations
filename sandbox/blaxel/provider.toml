@@ -1,0 +1,61 @@
+format = 3
+name = "blaxel"
+label = "Blaxel"
+api = "https://api.blaxel.ai/v0"
+key_env = "BL_API_KEY"
+docs = "https://docs.blaxel.ai/api-reference/compute/create-sandbox.md"
+adapted_by = "claude"
+adapted = "2026-11-16"
+note = """A Blaxel sandbox from blaxel/base-image. Use a service account's API key in BL_API_KEY: it reaches only its own workspace, while a personal key spans every workspace you belong to and this file names none. Stop and start are archive and unarchive, which are in private preview: until Blaxel turns the feature flag on for your workspace they answer 403. Archiving keeps the filesystem, not memory. Blaxel has no ssh: ports are reached over HTTPS only."""
+
+# The list is a bare array in this API version; later ones wrap it.
+headers = { Blaxel-Version = "2026-04-16" }
+
+[create]
+# Only metadata.name is required. The image has no documented default, so
+# it is Blaxel's public base image; memory is MB and sets the CPUs too
+# (MB / 2048).
+call = "POST /sandboxes"
+body = { metadata = { name = "{name}" }, spec = { runtime = { image = "blaxel/base-image:latest", memory = "{memory_mb}" } } }
+id = "metadata.name"
+
+[get]
+# A sandbox's id is its name.
+call = "GET /sandboxes/{id}"
+state = "status"
+name = "metadata.name"
+memory_mb = "spec.runtime.memory"
+created = "metadata.createdAt"
+
+[list]
+# Terminated sandboxes are hidden unless showTerminated=true.
+call = "GET /sandboxes"
+items = "[*]"
+id = "metadata.name"
+mine = "conch-"
+
+[start]
+call = "POST /sandboxes/{id}/unarchive"
+[stop]
+call = "POST /sandboxes/{id}/archive"
+[delete]
+call = "DELETE /sandboxes/{id}"
+
+[states]
+UPLOADING = "starting"
+BUILDING = "starting"
+BUILT = "starting"
+DEPLOYING = "starting"
+UNARCHIVING = "starting"
+DEPLOYED = "started"
+DEACTIVATING = "stopping"
+ARCHIVING = "stopping"
+DEACTIVATED = "stopped"
+ARCHIVED = "stopped"
+DELETING = "gone"
+TERMINATED = "gone"
+FAILED = "error"
+
+# No [ssh] yet: Blaxel reaches a sandbox's ports over HTTPS only
+# (sbx-NAME-WORKSPACE.REGION.bl.run). conch cloud will reach sandboxes
+# through a public URL.

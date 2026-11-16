@@ -584,6 +584,18 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual((f["list"]["items"], f.get("format")), ("[*]", 2))
         self.assertEqual(set(f["states"]), {"running", "paused"})
 
+    def test_blaxel_stops_and_starts_on_its_api_host(self):
+        # Archive and unarchive are on api.blaxel.ai (standby and resume
+        # were on each sandbox's own host, which kept Blaxel out). The list
+        # is a bare array only in API version 2026-04-16, so it is pinned.
+        f = tomllib.loads((registry.PROVIDERS / "blaxel" / "provider.toml").read_text())
+        self.assertEqual((f["stop"]["call"], f["start"]["call"]),
+                         ("POST /sandboxes/{id}/archive", "POST /sandboxes/{id}/unarchive"))
+        self.assertEqual((f["headers"]["Blaxel-Version"], f["list"]["items"], f.get("format")), ("2026-04-16", "[*]", 3))
+        self.assertEqual(set(f["states"]), {"UPLOADING", "BUILDING", "BUILT", "DEPLOYING", "DEPLOYED", "DEACTIVATING",
+                                            "DEACTIVATED", "ARCHIVING", "ARCHIVED", "UNARCHIVING", "DELETING",
+                                            "TERMINATED", "FAILED"})
+
     def test_superserve_reads_its_list_from_a_bare_array(self):
         f = tomllib.loads((registry.PROVIDERS / "superserve" / "provider.toml").read_text())
         self.assertEqual((f["list"]["items"], f.get("format")), ("[*]", 2))
