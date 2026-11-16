@@ -31,7 +31,19 @@ jobs:
         run: |
           go install github.com/Amitgb14/conch/cmd/conch@master
           export CONCH_HOME="$(mktemp -d)"
-          # A provider that is off has no [ssh] yet; the rest must be clean.
-          python scripts/registry.py conch-check
+          status=0
+          # A sandbox provider that is off has no [ssh] yet; the rest must be clean.
+          python scripts/registry.py conch-check || status=1
+          # Integration files need a conch with conch integration; until
+          # master has it, the registry's own checks above are all there is.
+          if conch integration guide >/dev/null 2>&1; then
+            for f in ci/*/integration.toml tickets/*/integration.toml notify/*/integration.toml; do
+              [ -e "$f" ] || continue
+              conch integration check "$f" || status=1
+            done
+          else
+            echo "::notice::this conch has no conch integration yet: integration files were not checked by conch"
+          fi
+          exit $status
       - name: The index builds
         run: python scripts/registry.py build "$(mktemp -d)"

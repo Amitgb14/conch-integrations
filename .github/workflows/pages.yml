@@ -27,7 +27,11 @@ jobs:
           python-version: "3.12"
       - run: python -m unittest discover -s scripts
       - run: python scripts/registry.py check
+      # Signed with the key only this repository's Actions hold; conch
+      # refuses an unsigned index from a registry whose key it knows.
       - run: python scripts/registry.py build _site
+        env:
+          CONCH_REGISTRY_SIGNING_KEY: ${{ secrets.CONCH_REGISTRY_SIGNING_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

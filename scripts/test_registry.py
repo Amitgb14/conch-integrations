@@ -2,8 +2,8 @@
 
 import json
 import os
-import subprocess
 import re
+import subprocess
 import tempfile
 import tomllib
 import unittest
@@ -32,8 +32,9 @@ class RegistryTest(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
-        self.providers = self.root / "providers"
-        for patch in (mock.patch.object(registry, "ROOT", self.root), mock.patch.object(registry, "PROVIDERS", self.providers)):
+        self.providers = self.root / "sandbox"
+        for patch in (mock.patch.object(registry, "ROOT", self.root), mock.patch.object(registry, "PROVIDERS", self.providers),
+                      mock.patch.object(registry, "BUILTIN", self.root / "builtin.json")):
             patch.start()
             self.addCleanup(patch.stop)
 
@@ -57,10 +58,11 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(self.problems(), "")
         self.providers.mkdir()
         self.assertEqual(registry.build(self.root / "site"), [])
-        self.assertEqual(json.loads((self.root / "site" / "index.json").read_text()), {"format": 1, "providers": [], "disabled": []})
+        self.assertEqual(json.loads((self.root / "site" / "index.json").read_text()), {"format": 2, "entries": [], "disabled": []})
+        self.assertEqual(json.loads((self.root / "site" / "legacy" / "index.json").read_text()), {"format": 1, "providers": [], "disabled": []})
 
     def test_the_folder(self):
-        for name, want in (("Acme", "the folder's name"), ("daytona", "built in"), ("a", "the folder's name")):
+        for name, want in (("Acme", "the folder's name"), ("a", "the folder's name")):
             with self.subTest(name=name):
                 folder = self.write(name)
                 self.assertIn(want, self.problems())
@@ -73,7 +75,7 @@ class RegistryTest(unittest.TestCase):
         (self.providers / "acme" / "meta.json").unlink()
         self.assertIn("no meta.json", self.problems())
         (self.providers / "stray.toml").write_text("")
-        self.assertIn("stray.toml: providers/ holds a folder", self.problems())
+        self.assertIn("stray.toml: sandbox/ holds a folder", self.problems())
 
     def test_the_file(self):
         for change, want in (
@@ -152,7 +154,14 @@ class RegistryTest(unittest.TestCase):
         entries = registry.build(site)
         self.assertEqual([e["name"] for e in entries], ["acme", "beta"])
         index = json.loads((site / "index.json").read_text())
-        acme = index["providers"][0]
+        self.assertEqual(index["format"], 2)
+        acme = index["entries"][0]
+        self.assertEqual((acme["kind"], acme["hosts"]), ("sandbox", {"api": "api.acme.example", "ssh": "{reply.server.ip}"}))
+        # Conches from before the move read the sandbox providers in format
+        # 1, from legacy/, which the old address mirrors.
+        legacy = json.loads((site / "legacy" / "index.json").read_text())
+        self.assertEqual((legacy["format"], [p["name"] for p in legacy["providers"]]), (1, ["acme", "beta"]))
+        self.assertEqual((site / "legacy" / "providers" / "acme.toml").read_bytes(), (self.providers / "acme" / "provider.toml").read_bytes())
         raw = (site / "providers" / "acme.toml").read_bytes()
         self.assertEqual(raw, (self.providers / "acme" / "provider.toml").read_bytes())
         import hashlib
@@ -185,14 +194,17 @@ class RegistryTest(unittest.TestCase):
             with self.subTest(want=want):
                 self.write("dark", toml=toml, meta=meta)
                 self.assertIn(want, self.problems())
-        # Off is published apart: a conch that cannot reach it never offers it.
+        # Off is listed apart in both indexes: no conch offers one it cannot reach.
         self.write("dark", toml=no_ssh, meta=off)
         self.write()
         site = self.root / "site"
-        self.assertEqual([e["name"] for e in registry.build(site)], ["acme", "dark"])
+        self.assertEqual([e["name"] for e in registry.build(site)], ["acme"])
         index = json.loads((site / "index.json").read_text())
-        self.assertEqual([e["name"] for e in index["providers"]], ["acme"])
-        self.assertEqual([e["name"] for e in index["disabled"]], ["dark"])
+        self.assertEqual([e["name"] for e in index["entries"]], ["acme"])
+        self.assertEqual([(e["name"], e["enabled"]) for e in index["disabled"]], [("dark", False)])
+        legacy = json.loads((site / "legacy" / "index.json").read_text())
+        self.assertEqual([e["name"] for e in legacy["providers"]], ["acme"])
+        self.assertEqual([e["name"] for e in legacy["disabled"]], ["dark"])
         self.assertTrue((site / "providers" / "dark.toml").exists())
         self.assertIn("off: no ssh yet", (site / "index.html").read_text())
 
@@ -222,6 +234,155 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual([p.split(":")[0] for p in problems], ["acme", "acme"])
 
 
+CI = '''format = 3
+kind = "ci"
+name = "acme-ci"
+label = "Acme CI"
+api = "https://api.acme.example"
+key_env = "ACME_TOKEN"
+follow_hosts = ["logs.acme.example"]
+
+[runs]
+call = "GET /runs?branch={branch}"
+
+[failed_log]
+call = "GET /runs/{run}/log"
+text = "."
+'''
+
+CI_META = {"version": 1, "adapted_by": "claude", "adapted": "2026-11-15", "docs": "https://docs.acme.example/api",
+           "conch": "0.2.1", "checked": None}
+
+
+class IntegrationTest(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        for patch in (mock.patch.object(registry, "ROOT", self.root), mock.patch.object(registry, "PROVIDERS", self.root / "sandbox"),
+                      mock.patch.object(registry, "BUILTIN", self.root / "builtin.json")):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def write(self, name="acme-ci", toml=CI, meta=None, kind="ci", extra=None):
+        folder = self.root / kind / name
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "integration.toml").write_text(toml.replace('name = "acme-ci"', f'name = "{name}"'))
+        (folder / "meta.json").write_text(json.dumps(CI_META if meta is None else meta))
+        for file, text in (extra or {}).items():
+            (folder / file).write_text(text)
+        return folder
+
+    def problems(self, base=None):
+        return "\n".join(registry.check(base))
+
+    def test_a_good_integration(self):
+        self.write()
+        self.assertEqual(self.problems(), "")
+
+    def test_the_file_and_meta(self):
+        for toml, meta, want in (
+            (CI.replace('kind = "ci"', 'kind = "notify"'), None, "kind 'notify'; it is in ci/"),
+            (CI.replace("format = 3", "format = 2"), None, "format = 3"),
+            (CI.replace('name = "acme-ci"', 'name = "other"'), None, "the folder is 'acme-ci'"),
+            (CI.replace("https://api.acme.example", "http://api.acme.example"), None, "api: an https"),
+            (CI, {**CI_META, "version": 0}, "version: 1"),
+            (CI, {k: v for k, v in CI_META.items() if k != "conch"}, "no conch"),
+            (CI, {**CI_META, "revoked": [{"version": 1}]}, "revoked: a list"),
+            (CI, {**CI_META, "checked": {"date": "2026-11-15", "conch": "x"}}, "checked.conch"),
+            (CI.replace('key_env = "ACME_TOKEN"', 'key_env = "ACME_TOKEN"\nnote = "ghp_abcdefghijklmnop1234"'), None, "looks like an API token"),
+        ):
+            with self.subTest(want=want):
+                self.write(toml=toml, meta=meta)
+                self.assertIn(want, self.problems())
+        self.write(extra={"run.sh": "x"})
+        self.assertIn("run.sh: only integration.toml", self.problems())
+
+    def test_a_self_hosted_one_has_no_api(self):
+        self.write(toml=CI.replace('api = "https://api.acme.example"', 'base_url = "ask"'))
+        self.assertEqual(self.problems(), "")
+
+    def test_a_host_change_needs_a_label(self):
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=self.root, check=True)
+        self.write()
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+        subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "x"], cwd=self.root, check=True, env=env)
+        for change in (("api.acme.example", "api.evil.example"), ('["logs.acme.example"]', '["logs.acme.example", "cdn.evil.example"]')):
+            with self.subTest(change=change):
+                self.write(toml=CI.replace(*change))
+                self.assertIn("host-change", self.problems("main"))
+                with mock.patch.dict(os.environ, {"ALLOW_HOST_CHANGE": "true"}):
+                    self.assertEqual(self.problems("main"), "")
+
+    def test_build(self):
+        self.write()
+        self.write("old-ci", meta={**CI_META, "version": 3, "revoked": [{"version": 3, "reason": "sent logs elsewhere"}],
+                                    "checked": {"date": "2026-11-15", "conch": "0.2.1", "detail": "12 runs read"}})
+        site = self.root / "site"
+        registry.build(site)
+        index = json.loads((site / "index.json").read_text())
+        by = {e["name"]: e for e in index["entries"]}
+        acme = by["acme-ci"]
+        self.assertEqual((acme["kind"], acme["version"], acme["file"], acme["hosts"], acme["key_env"], acme["operations"], acme["tier"]),
+                         ("ci", 1, "integrations/acme-ci.toml", {"api": "api.acme.example", "follow": ["logs.acme.example"]},
+                          "ACME_TOKEN", ["runs", "failed_log"], "community"))
+        import hashlib
+        self.assertEqual(acme["sha256"], hashlib.sha256((site / "integrations" / "acme-ci.toml").read_bytes()).hexdigest())
+        self.assertEqual((by["old-ci"]["tier"], by["old-ci"]["revoked"][0]["reason"]), ("verified", "sent logs elsewhere"))
+        self.assertFalse((site / "index.json.sig").exists())
+        # A bad one stops the build rather than publishing it.
+        self.write("bad-ci", meta={})
+        with self.assertRaises(SystemExit):
+            registry.build(self.root / "site2")
+
+    def test_builtins(self):
+        self.write()
+        (self.root / "builtin.json").write_text(json.dumps([
+            {"kind": "tickets", "name": "jira", "label": "Jira", "docs": "https://developer.atlassian.com", "key_env": "JIRA_API_TOKEN"},
+            {"kind": "host", "name": "github", "label": "GitHub", "docs": "https://cli.github.com"}]))
+        self.assertEqual(self.problems(), "")
+        registry.build(self.root / "site")
+        by = {e["name"]: e for e in json.loads((self.root / "site" / "index.json").read_text())["entries"]}
+        self.assertEqual((by["jira"]["builtin"], by["jira"]["kind"], by["jira"]["tier"], by["jira"]["key_env"]), (True, "tickets", "built in", "JIRA_API_TOKEN"))
+        self.assertNotIn("file", by["jira"])
+        self.assertIn("built into conch", (self.root / "site" / "index.html").read_text())
+        for items, want in (
+            ([{"kind": "repo", "name": "x1", "label": "X", "docs": "https://x"}], "kind 'repo'"),
+            ([{"kind": "host", "name": "acme-ci", "label": "X", "docs": "https://x"}], "also a file here"),
+            ([{"kind": "host", "name": "gh", "label": "X", "docs": "https://x", "file": "x"}], "unknown key file"),
+            ([{"kind": "host", "name": "gh", "label": "X", "docs": "http://x"}], "docs: an https"),
+            ([{"kind": "host", "name": "gh", "label": "X", "docs": "https://x"}] * 2, "gh twice"),
+            ({}, "a list"),
+        ):
+            with self.subTest(want=want):
+                (self.root / "builtin.json").write_text(json.dumps(items))
+                self.assertIn(want, self.problems())
+        (self.root / "builtin.json").write_text("[")
+        self.assertIn("builtin.json:", self.problems())
+
+    def test_signing(self):
+        import base64
+        self.write()
+        seed = os.urandom(32)
+        with mock.patch.dict(os.environ, {"CONCH_REGISTRY_SIGNING_KEY": base64.b64encode(seed).decode()}):
+            registry.build(self.root / "site")
+        sig = base64.b64decode((self.root / "site" / "index.json.sig").read_text())
+        self.assertEqual(len(sig), 64)
+        # openssl checks it with the public half, as conch does.
+        key = self.root / "key.der"
+        key.write_bytes(registry._ED25519_PREFIX + seed)
+        pub = self.root / "pub.pem"
+        subprocess.run(["openssl", "pkey", "-inform", "DER", "-in", str(key), "-pubout", "-out", str(pub)], check=True)
+        (self.root / "sig").write_bytes(sig)
+        ok = subprocess.run(["openssl", "pkeyutl", "-verify", "-pubin", "-inkey", str(pub), "-rawin",
+                             "-in", str(self.root / "site" / "index.json"), "-sigfile", str(self.root / "sig")], capture_output=True)
+        self.assertEqual(ok.returncode, 0, ok.stdout + ok.stderr)
+        with mock.patch.dict(os.environ, {"CONCH_REGISTRY_SIGNING_KEY": "short"}):
+            with self.assertRaises(SystemExit):
+                registry.build(self.root / "site3")
+
+
 class RepositoryTest(unittest.TestCase):
     """The providers committed here, rather than ones made up for a test."""
 
@@ -243,7 +404,7 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(f["delete"]["headers"]["X-Confirm-Delete"], "{id}")
 
     def test_the_readme_lists_every_provider(self):
-        # Rows of the README's table: | Label | `name` | live check |
+        # Rows of the README's sandbox table: | Label | `name` | live check |
         readme = (registry.ROOT / "README.md").read_text()
         listed = {}
         for label, name, live in re.findall(r"^\| ([^|]+?) \| `([a-z0-9-]+)` \| ([^|]+?) \|$", readme, re.M):
@@ -252,8 +413,7 @@ class RepositoryTest(unittest.TestCase):
         for folder in registry.folders():
             f = tomllib.loads((folder / "provider.toml").read_text())
             meta = json.loads((folder / "meta.json").read_text())
-            checked = meta["checked"]
-            live = f"checked {checked['date']}" if checked else "not yet"
+            live = meta["checked"]["date"] if meta["checked"] else "not yet"
             want = (f.get("label") or folder.name, live if meta.get("enabled", True) else "off: no ssh yet")
             self.assertEqual(listed[folder.name], want, folder.name)
 
