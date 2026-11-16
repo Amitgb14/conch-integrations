@@ -30,7 +30,7 @@ class RegistryTest(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
-        self.providers = self.root / "providers"
+        self.providers = self.root / "sandbox"
         for patch in (mock.patch.object(registry, "ROOT", self.root), mock.patch.object(registry, "PROVIDERS", self.providers)):
             patch.start()
             self.addCleanup(patch.stop)
@@ -55,7 +55,8 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(self.problems(), "")
         self.providers.mkdir()
         self.assertEqual(registry.build(self.root / "site"), [])
-        self.assertEqual(json.loads((self.root / "site" / "index.json").read_text()), {"format": 1, "providers": []})
+        self.assertEqual(json.loads((self.root / "site" / "index.json").read_text()), {"format": 2, "entries": []})
+        self.assertEqual(json.loads((self.root / "site" / "legacy" / "index.json").read_text()), {"format": 1, "providers": []})
 
     def test_the_folder(self):
         for name, want in (("Acme", "the folder's name"), ("a", "the folder's name")):
@@ -71,7 +72,7 @@ class RegistryTest(unittest.TestCase):
         (self.providers / "acme" / "meta.json").unlink()
         self.assertIn("no meta.json", self.problems())
         (self.providers / "stray.toml").write_text("")
-        self.assertIn("stray.toml: providers/ holds a folder", self.problems())
+        self.assertIn("stray.toml: sandbox/ holds a folder", self.problems())
 
     def test_the_file(self):
         for change, want in (
@@ -150,7 +151,14 @@ class RegistryTest(unittest.TestCase):
         entries = registry.build(site)
         self.assertEqual([e["name"] for e in entries], ["acme", "beta"])
         index = json.loads((site / "index.json").read_text())
-        acme = index["providers"][0]
+        self.assertEqual(index["format"], 2)
+        acme = index["entries"][0]
+        self.assertEqual((acme["kind"], acme["hosts"]), ("sandbox", {"api": "api.acme.example", "ssh": "{reply.server.ip}"}))
+        # Conches from before the move read the sandbox providers in format
+        # 1, from legacy/, which the old address mirrors.
+        legacy = json.loads((site / "legacy" / "index.json").read_text())
+        self.assertEqual((legacy["format"], [p["name"] for p in legacy["providers"]]), (1, ["acme", "beta"]))
+        self.assertEqual((site / "legacy" / "providers" / "acme.toml").read_bytes(), (self.providers / "acme" / "provider.toml").read_bytes())
         raw = (site / "providers" / "acme.toml").read_bytes()
         self.assertEqual(raw, (self.providers / "acme" / "provider.toml").read_bytes())
         import hashlib
@@ -163,6 +171,129 @@ class RegistryTest(unittest.TestCase):
         self.write("gamma", meta={})
         with self.assertRaises(SystemExit):
             registry.build(self.root / "site2")
+
+
+CI = '''format = 3
+kind = "ci"
+name = "acme-ci"
+label = "Acme CI"
+api = "https://api.acme.example"
+key_env = "ACME_TOKEN"
+follow_hosts = ["logs.acme.example"]
+
+[runs]
+call = "GET /runs?branch={branch}"
+
+[failed_log]
+call = "GET /runs/{run}/log"
+text = "."
+'''
+
+CI_META = {"version": 1, "adapted_by": "claude", "adapted": "2026-11-15", "docs": "https://docs.acme.example/api",
+           "conch": "0.2.1", "checked": None}
+
+
+class IntegrationTest(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        for patch in (mock.patch.object(registry, "ROOT", self.root), mock.patch.object(registry, "PROVIDERS", self.root / "sandbox")):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def write(self, name="acme-ci", toml=CI, meta=None, kind="ci", extra=None):
+        folder = self.root / kind / name
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "integration.toml").write_text(toml.replace('name = "acme-ci"', f'name = "{name}"'))
+        (folder / "meta.json").write_text(json.dumps(CI_META if meta is None else meta))
+        for file, text in (extra or {}).items():
+            (folder / file).write_text(text)
+        return folder
+
+    def problems(self, base=None):
+        return "\n".join(registry.check(base))
+
+    def test_a_good_integration(self):
+        self.write()
+        self.assertEqual(self.problems(), "")
+
+    def test_the_file_and_meta(self):
+        for toml, meta, want in (
+            (CI.replace('kind = "ci"', 'kind = "notify"'), None, "kind 'notify'; it is in ci/"),
+            (CI.replace("format = 3", "format = 2"), None, "format = 3"),
+            (CI.replace('name = "acme-ci"', 'name = "other"'), None, "the folder is 'acme-ci'"),
+            (CI.replace("https://api.acme.example", "http://api.acme.example"), None, "api: an https"),
+            (CI, {**CI_META, "version": 0}, "version: 1"),
+            (CI, {k: v for k, v in CI_META.items() if k != "conch"}, "no conch"),
+            (CI, {**CI_META, "revoked": [{"version": 1}]}, "revoked: a list"),
+            (CI, {**CI_META, "checked": {"date": "2026-11-15", "conch": "x"}}, "checked.conch"),
+            (CI.replace('key_env = "ACME_TOKEN"', 'key_env = "ACME_TOKEN"\nnote = "ghp_abcdefghijklmnop1234"'), None, "looks like an API token"),
+        ):
+            with self.subTest(want=want):
+                self.write(toml=toml, meta=meta)
+                self.assertIn(want, self.problems())
+        self.write(extra={"run.sh": "x"})
+        self.assertIn("run.sh: only integration.toml", self.problems())
+
+    def test_a_self_hosted_one_has_no_api(self):
+        self.write(toml=CI.replace('api = "https://api.acme.example"', 'base_url = "ask"'))
+        self.assertEqual(self.problems(), "")
+
+    def test_a_host_change_needs_a_label(self):
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=self.root, check=True)
+        self.write()
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+        subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "x"], cwd=self.root, check=True, env=env)
+        for change in (("api.acme.example", "api.evil.example"), ('["logs.acme.example"]', '["logs.acme.example", "cdn.evil.example"]')):
+            with self.subTest(change=change):
+                self.write(toml=CI.replace(*change))
+                self.assertIn("host-change", self.problems("main"))
+                with mock.patch.dict(os.environ, {"ALLOW_HOST_CHANGE": "true"}):
+                    self.assertEqual(self.problems("main"), "")
+
+    def test_build(self):
+        self.write()
+        self.write("old-ci", meta={**CI_META, "version": 3, "revoked": [{"version": 3, "reason": "sent logs elsewhere"}],
+                                    "checked": {"date": "2026-11-15", "conch": "0.2.1", "detail": "12 runs read"}})
+        site = self.root / "site"
+        registry.build(site)
+        index = json.loads((site / "index.json").read_text())
+        by = {e["name"]: e for e in index["entries"]}
+        acme = by["acme-ci"]
+        self.assertEqual((acme["kind"], acme["version"], acme["file"], acme["hosts"], acme["key_env"], acme["operations"], acme["tier"]),
+                         ("ci", 1, "integrations/acme-ci.toml", {"api": "api.acme.example", "follow": ["logs.acme.example"]},
+                          "ACME_TOKEN", ["runs", "failed_log"], "community"))
+        import hashlib
+        self.assertEqual(acme["sha256"], hashlib.sha256((site / "integrations" / "acme-ci.toml").read_bytes()).hexdigest())
+        self.assertEqual((by["old-ci"]["tier"], by["old-ci"]["revoked"][0]["reason"]), ("verified", "sent logs elsewhere"))
+        self.assertFalse((site / "index.json.sig").exists())
+        # A bad one stops the build rather than publishing it.
+        self.write("bad-ci", meta={})
+        with self.assertRaises(SystemExit):
+            registry.build(self.root / "site2")
+
+    def test_signing(self):
+        import base64
+        self.write()
+        seed = os.urandom(32)
+        with mock.patch.dict(os.environ, {"CONCH_REGISTRY_SIGNING_KEY": base64.b64encode(seed).decode()}):
+            registry.build(self.root / "site")
+        sig = base64.b64decode((self.root / "site" / "index.json.sig").read_text())
+        self.assertEqual(len(sig), 64)
+        # openssl checks it with the public half, as conch does.
+        key = self.root / "key.der"
+        key.write_bytes(registry._ED25519_PREFIX + seed)
+        pub = self.root / "pub.pem"
+        subprocess.run(["openssl", "pkey", "-inform", "DER", "-in", str(key), "-pubout", "-out", str(pub)], check=True)
+        (self.root / "sig").write_bytes(sig)
+        ok = subprocess.run(["openssl", "pkeyutl", "-verify", "-pubin", "-inkey", str(pub), "-rawin",
+                             "-in", str(self.root / "site" / "index.json"), "-sigfile", str(self.root / "sig")], capture_output=True)
+        self.assertEqual(ok.returncode, 0, ok.stdout + ok.stderr)
+        with mock.patch.dict(os.environ, {"CONCH_REGISTRY_SIGNING_KEY": "short"}):
+            with self.assertRaises(SystemExit):
+                registry.build(self.root / "site3")
 
 
 if __name__ == "__main__":
