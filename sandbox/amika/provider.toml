@@ -1,0 +1,67 @@
+format = 2
+name = "amika"
+label = "Amika"
+api = "https://app.amika.dev/api/v0beta1"
+key_env = "AMIKA_API_KEY"
+docs = "https://app.amika.dev/api/v0beta1/openapi.json"
+adapted_by = "claude"
+adapted = "2026-11-16"
+note = """An Amika rig: a devbox VM on Amika Cloud. Make an API key at app.amika.dev → Settings → API Keys and put it in AMIKA_API_KEY; an organization key (the default) starts service-account rigs, a user key starts yours. The API is v0beta1, so fields may still change. Amika has no plain ssh: its ssh rides a WebSocket (POST /rigs/{id}/ssh-sessions, transport direct_ws) through the amika CLI."""
+
+[create]
+# Only name is required. resources {vcpus, memoryGib, diskGib} must come
+# whole, and auto_stop_interval is in minutes, so both are left out: the
+# rig gets Amika's default size and stop time.
+call = "POST /rigs"
+body = { name = "{name}", snapshot = "{snapshot}", env_vars = "{env}" }
+id = "id"
+
+[get]
+# A rig path takes the rig's id or its name.
+call = "GET /rigs/{id}"
+state = "status"
+name = "name"
+reason = "error_message"
+cpu = "sandbox_size_config.vcpus"
+# Memory and disk are in GiB there (memoryGib, diskGib), which only
+# format 4 reads; format 2 keeps the file readable by older conches.
+created = "created_at"
+
+[list]
+# The reply is a bare JSON array of rigs, with no paging.
+call = "GET /rigs"
+items = "[*]"
+id = "id"
+mine = "conch-"
+
+[start]
+call = "POST /rigs/{id}/start"
+[stop]
+call = "POST /rigs/{id}/stop"
+[delete]
+call = "DELETE /rigs/{id}"
+
+[states]
+# The rig's status, as the OpenAPI spec lists it.
+creating = "starting"
+starting = "starting"
+running = "started"
+stopping = "stopping"
+stopped = "stopped"
+suspending = "stopping"
+suspended = "stopped"
+snapshotting = "stopping"
+failed = "error"
+unknown = "starting"
+
+# No [ssh] yet. POST /rigs/{id}/ssh-sessions answers a WebSocket
+# connect_url and a connect_credential, never a host and port, so plain
+# ssh cannot dial it. conch cloud will reach rigs through a public URL;
+# then:
+# [ssh]
+# host = …
+# user = "{reply.ssh_user}"
+# key = "account"   # keys registered with POST /secrets/ssh-public-keys
+#
+# [ssh.access]
+# call = "POST /rigs/{id}/ssh-sessions"
