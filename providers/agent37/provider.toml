@@ -1,0 +1,58 @@
+name = "agent37"
+label = "Agent37"
+api = "https://api.agent37.com/v1"
+key_env = "AGENT37_API_KEY"
+docs = "https://www.agent37.com/docs/agents-api/instances/object"
+adapted_by = "claude"
+adapted = "2026-11-15"
+note = """An Agent37 instance: a persistent Linux sandbox from the agent37-base template (2 vCPU / 4 GB unless asked otherwise) in the us region. Make an API key in the dashboard and put it in AGENT37_API_KEY; the workspace wallet must hold a day of compute. Agent37 has no plain ssh: its ssh rides a WebSocket through the agent37 CLI."""
+
+[create]
+call = "POST /instances"
+# Every field is optional. resources takes cpu, memory and disk in whole
+# GB, and must match one of the four documented shapes
+# (/docs/agents-api/instance-sizing); an off-shape request is refused.
+body = { name = "{name}", template = "{snapshot}", resources = { cpu = "{cpu}", memory = "{memory_gib}", disk = "{disk_gib}" }, env = "{env}" }
+id = "id"
+
+[get]
+call = "GET /instances/{id}"
+state = "status"
+name = "name"
+reason = "status_reason.message"
+cpu = "resources.cpu"
+# memory and disk are in GB, which [get] has no field for.
+created = "created"
+
+[list]
+# One page: the docs show { "data": [...] }, newest first, and no paging.
+call = "GET /instances"
+items = "data"
+id = "id"
+mine = "conch-"
+
+[start]
+call = "POST /instances/{id}/start"
+[stop]
+call = "POST /instances/{id}/stop"
+[delete]
+call = "DELETE /instances/{id}"
+
+[states]
+provisioning = "starting"
+running = "started"
+stopping = "stopping"
+stopped = "stopped"
+starting = "starting"
+restarting = "starting"
+updating = "starting"
+sleeping = "stopped"   # auto-sleep checkpoint; start (or any request) wakes it
+waking = "starting"
+failed = "error"
+deleting = "stopping"
+deleted = "gone"
+
+# [ssh]
+# No plain ssh yet: its ssh rides a WebSocket through the agent37 CLI.
+# conch cloud will reach it through a public URL; until then this provider is
+# off (meta.json "enabled": false).
