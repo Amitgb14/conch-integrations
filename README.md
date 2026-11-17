@@ -139,29 +139,14 @@ replaces it.
 
 | Provider | Name | Live check |
 | --- | --- | --- |
-| Agent37 | `agent37` | off: no ssh yet |
-| Amika | `amika` | off: no ssh yet |
-| Archil | `archil` | off: no ssh yet |
-| Blaxel | `blaxel` | off: no ssh yet |
 | boat.dev | `boat` | not yet |
-| briq | `briq` | off: no ssh yet |
-| CreateOS | `createos` | off: no ssh yet |
 | Daytona | `daytona` | not yet |
 | DigitalOcean | `digitalocean` | not yet |
-| E2B | `e2b` | off: no ssh yet |
-| Freestyle | `freestyle` | off: no ssh yet |
-| Gravix Layer | `gravixlayer` | off: no ssh yet |
 | Hetzner Cloud | `hetzner` | not yet |
 | InstaBox | `instabox` | 2026-11-15 |
-| kosa8 Cloud | `kosa8` | off: no ssh yet |
-| Microsandbox | `microsandbox` | off: no ssh yet |
-| MIOSA | `miosa` | off: no ssh yet |
 | Mosaic Sandbox | `mosaic` | not yet |
 | Namespace | `namespace` | not yet |
-| Promigence | `promigence` | off: no ssh yet |
-| Superserve | `superserve` | off: no ssh yet |
 | Tensorlake | `tensorlake` | not yet |
-| Uno | `uno` | off: no ssh yet |
 
 Daytona, boat.dev and Tensorlake were built into conch until they became
 files here (format 4: what a person can choose for them — a region, a
@@ -169,17 +154,20 @@ default image, a size — and their snapshots and preview links). A conch
 from before that keeps its own and reads only `legacy/`, which leaves
 format-4 files out.
 
-A provider marked **off** has an API conch can drive but no plain-ssh way
-into its sandboxes. Its file describes the API in full and leaves `[ssh]`
-out, and its `meta.json` says `"enabled": false`. conch cloud will reach
-such sandboxes through a public URL; until then both indexes list them under
-`disabled`, apart from the providers conch offers, so no conch installs one
-it cannot connect to. A setting in conch will turn them on.
+A provider that is **off** has an API conch can drive but no plain-ssh
+way into its sandboxes. Its file describes the API in full and leaves
+`[ssh]` out, and its `meta.json` says `"enabled": false`. conch cloud will
+reach such sandboxes through a public URL; until then they are hidden:
+neither this table, the indexes nor the published page lists them (both
+indexes keep an empty `disabled`), so no conch shows or installs one it
+cannot connect to. Their folders stay under `sandbox/` and CI still checks
+them; one is listed again once it has an `[ssh]` and `"enabled": false`
+comes out of its `meta.json`.
 
 ### Looked at, and why they are not here
 
 A provider needs an HTTP API that a provider file can describe; lacking
-only plain ssh, it is listed off. These, from the
+only plain ssh, it is kept here off. These, from the
 [ComputeSDK sandbox ratings](https://www.computesdk.com/benchmarks/sandboxes/ratings)
 (November 2026), cannot be described yet, even off.
 

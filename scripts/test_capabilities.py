@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 import registry
-from test_registry import CI, CI_META, GOOD, META
+from test_registry import CI, CI_META, META
 
 try:
     import jsonschema
@@ -166,7 +166,7 @@ class Isolated(unittest.TestCase):
 
     def entry(self, name):
         index = self.index()
-        return next(e for e in index["entries"] + index["disabled"] if e["name"] == name)
+        return next(e for e in index["entries"] if e["name"] == name)
 
 
 class SandboxCapabilitiesTest(Isolated):
@@ -206,13 +206,6 @@ class SandboxCapabilitiesTest(Isolated):
             with self.subTest(want=want):
                 self.provider(FORMAT_4.replace('[size]\nnames = ["small", "large"]\n', size))
                 self.assertEqual(self.entry("acme")["capabilities"]["size"], want)
-
-    def test_a_provider_that_is_off_has_no_ssh(self):
-        self.provider(GOOD.split("[ssh]")[0], meta={**META, "enabled": False})
-        e = self.entry("acme")
-        self.assertIsNone(e["capabilities"]["ssh"])
-        # Said, not assumed: another reason may come.
-        self.assertEqual(e["why"], "no ssh yet")
 
     def test_a_fixed_port(self):
         self.provider(FULL.replace('port = "{reply.port}"', "port = 2222"))

@@ -274,19 +274,24 @@ class RegistryTest(unittest.TestCase):
             with self.subTest(want=want):
                 self.write("dark", toml=toml, meta=meta)
                 self.assertIn(want, self.problems())
-        # Off is listed apart in both indexes: no conch offers one it cannot reach.
-        self.write("dark", toml=no_ssh, meta=off)
+        # Off is hidden: no index, legacy or not, and no page lists it, so
+        # no conch shows a provider it cannot reach. Its file stays here.
+        self.write("dark", toml=no_ssh, meta=off, extra={"icon.svg": SVG})
         self.write()
         site = self.root / "site"
         self.assertEqual([e["name"] for e in registry.build(site)], ["acme"])
         index = json.loads((site / "index.json").read_text())
         self.assertEqual([e["name"] for e in index["entries"]], ["acme"])
-        self.assertEqual([(e["name"], e["enabled"]) for e in index["disabled"]], [("dark", False)])
+        self.assertEqual(index["disabled"], [])
         legacy = json.loads((site / "legacy" / "index.json").read_text())
         self.assertEqual([e["name"] for e in legacy["providers"]], ["acme"])
-        self.assertEqual([e["name"] for e in legacy["disabled"]], ["dark"])
-        self.assertTrue((site / "providers" / "dark.toml").exists())
-        self.assertIn("off: no ssh yet", (site / "index.html").read_text())
+        self.assertEqual(legacy["disabled"], [])
+        self.assertFalse((site / "providers" / "dark.toml").exists())
+        self.assertFalse((site / "legacy" / "providers" / "dark.toml").exists())
+        self.assertFalse((site / "icons" / "dark.svg").exists())
+        page = (site / "index.html").read_text()
+        self.assertNotIn("dark", page)
+        self.assertNotIn("no ssh", page)
 
     def test_conch_check(self):
         no_ssh = GOOD.split("[ssh]")[0]
@@ -781,19 +786,20 @@ class RepositoryTest(unittest.TestCase):
         for folder in registry.folders():
             self.assertTrue({"icon.svg", "icon.png"} & {p.name for p in folder.iterdir()}, folder.name)
 
-    def test_the_readme_lists_every_provider(self):
+    def test_the_readme_lists_every_provider_that_is_on(self):
         # Rows of the README's sandbox table: | Label | `name` | live check |
+        # One that is off (no [ssh] yet) is hidden here as in the index.
         readme = (registry.ROOT / "README.md").read_text()
         listed = {}
         for label, name, live in re.findall(r"^\| ([^|]+?) \| `([a-z0-9-]+)` \| ([^|]+?) \|$", readme, re.M):
             listed[name] = (label, live)
-        self.assertEqual(sorted(listed), [f.name for f in registry.folders()])
-        for folder in registry.folders():
+        on = [f for f in registry.folders() if registry.enabled(json.loads((f / "meta.json").read_text()))]
+        self.assertEqual(sorted(listed), [f.name for f in on])
+        for folder in on:
             f = tomllib.loads((folder / "provider.toml").read_text())
             meta = json.loads((folder / "meta.json").read_text())
             live = meta["checked"]["date"] if meta["checked"] else "not yet"
-            want = (f.get("label") or folder.name, live if meta.get("enabled", True) else "off: no ssh yet")
-            self.assertEqual(listed[folder.name], want, folder.name)
+            self.assertEqual(listed[folder.name], (f.get("label") or folder.name, live), folder.name)
 
 
 if __name__ == "__main__":
