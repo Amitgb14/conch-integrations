@@ -10,8 +10,11 @@
     registry.py conch-check [CONCH]  conch's own check of every sandbox provider
 
 A folder per kind: sandbox/NAME/{provider.toml, meta.json} for sandbox
-providers, and ci|tickets|notify|deploy/NAME/{integration.toml, meta.json} for
-integration files (conch's format 3). conch checks each file itself;
+providers, and ci|tickets|notify|deploy|import/NAME/{integration.toml,
+meta.json}
+for integration files (conch's format 3). An import file has no key and
+no API: it says where another app keeps its conversations on this machine
+([source]), and which reader in conch understands them. conch checks each file itself;
 this checks what conch does not: the folder's shape, meta.json, that no
 secret was committed, and that a file's hosts did not move — a file sends
 the person's key to its api host, so a new host is a new destination for
@@ -43,7 +46,7 @@ PROVIDERS = ROOT / "sandbox"
 # Beside the script, not under ROOT: a test that moves ROOT keeps these.
 SCHEMAS = Path(__file__).resolve().parent.parent / "schema"
 # The integration kinds this registry holds, each a folder of its own.
-KINDS = ("ci", "tickets", "notify", "deploy")
+KINDS = ("ci", "tickets", "notify", "deploy", "import")
 # The kinds are the top-level directories (sandbox/, ci/, a new one…);
 # kinds.json names them and says what each is, in the order conch lists
 # them. These are not kinds.
@@ -61,7 +64,19 @@ INTEGRATION_CHECKED_KEYS = {"date", "conch", "detail"}
 OPERATIONS = {"ci": ("runs", "failed_log", "rerun", "stats"),
               "tickets": ("list", "mine", "get", "comment", "link", "move"),
               "notify": ("send",),
-              "deploy": ("previews", "failed_log", "redeploy", "promote")}
+              "deploy": ("previews", "failed_log", "redeploy", "promote"),
+              # An import file is read by a reader in conch ([source]
+              # names it), never run: it has no operations at all.
+              "import": ()}
+# Every operation of every kind: an import file holds none of them.
+ALL_OPERATIONS = sorted({op for ops in OPERATIONS.values() for op in ops})
+# An import file's [source]: what conch reads, where, and with which of its
+# own readers. Read only, on this machine; nothing is sent anywhere.
+SOURCE_KEYS = {"platforms", "store", "path", "reader", "min_reader"}
+STORES = ("sqlite", "jsonl", "json")
+PLATFORMS = ("darwin", "linux", "windows")
+# What an import file cannot hold: a key, or anywhere to send one.
+NOT_IMPORT = ("key_env", "api", "base_url", "auth", "auth_header", "follow_hosts")
 NAME = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
 ICONS = ("icon.svg", "icon.png")
 FILES = {"provider.toml", "meta.json", "README.md", *ICONS}
@@ -506,7 +521,11 @@ def load_integration(kind, folder):
         say(f"integration.toml is kind {f.get('kind')!r}; it is in {kind}/")
     if f.get("format") != 3:
         say("format = 3: an integration file says so")
-    if f.get("base_url") != "ask" or f.get("api"):
+    if kind == "import":
+        check_import(f, say)
+    elif "source" in f:
+        say("source: only an import file has a [source]")
+    if kind != "import" and (f.get("base_url") != "ask" or f.get("api")):
         api = urlparse(f.get("api", ""))
         if api.scheme != "https" or not api.hostname:
             say("api: an https:// URL")
@@ -549,6 +568,49 @@ def load_integration(kind, folder):
         if not isinstance(r, dict) or not isinstance(r.get("version"), int) or not r.get("reason"):
             say("meta.json revoked: a list of {version, reason}")
     return f, meta, problems
+
+
+def home_path(path):
+    """A path under the person's home, written ~/…, with no .. part: a file
+    here is everybody's, so it names no one's home, and reaches nowhere
+    outside it."""
+    return isinstance(path, str) and path.startswith("~/") and ".." not in path.split("/") \
+        and "\\" not in path and len(path) > 2
+
+
+def check_import(f, say):
+    """An import file: a [source] conch reads on this machine, and nothing
+    that would send anything anywhere."""
+    for k in NOT_IMPORT:
+        if k in f:
+            say(f"{k}: an import file reads a store on this machine; it has no key and no API")
+    for op in ALL_OPERATIONS:
+        if op in f:
+            say(f"{op}: an import file has no operations; its [source] names the reader in conch")
+    source = f.get("source")
+    if not isinstance(source, dict):
+        say("source: an import file needs a [source] (platforms, store, path, reader, min_reader)")
+    else:
+        for k in sorted(set(source) - SOURCE_KEYS):
+            say(f"source.{k}: unknown key")
+        for k in sorted(SOURCE_KEYS - set(source)):
+            say(f"source.{k}: missing")
+        platforms = source.get("platforms")
+        if "platforms" in source and (not isinstance(platforms, list) or not platforms
+                                      or any(p not in PLATFORMS for p in platforms)):
+            say(f"source.platforms: a list of {', '.join(PLATFORMS)}")
+        if "store" in source and source.get("store") not in STORES:
+            say(f"source.store {source.get('store')!r}: one of {', '.join(STORES)}")
+        if "path" in source and not home_path(source.get("path")):
+            say(f"source.path {source.get('path')!r}: under the home folder as ~/…, with no ..")
+        if "reader" in source and not NAME.match(str(source.get("reader"))):
+            say(f"source.reader {source.get('reader')!r}: a reader's name in conch, e.g. conductor")
+        min_reader = source.get("min_reader")
+        if "min_reader" in source and (not isinstance(min_reader, int) or isinstance(min_reader, bool) or min_reader < 1):
+            say("source.min_reader: the reader version this file was checked with, 1 or more")
+    for path in (f.get("detect") or {}).get("files") or []:
+        if not home_path(path):
+            say(f"detect.files {path!r}: under the home folder as ~/…, with no ..")
 
 
 def build(out):
@@ -629,6 +691,13 @@ def build(out):
             "adapted_by": meta["adapted_by"],
             "adapted": meta["adapted"],
         }
+        if kind == "import":
+            # What a conch needs to know before it offers it: on which
+            # systems, and which of its readers (and at least what version)
+            # understands the store. A conch without that reader shows it as
+            # needing a newer conch.
+            source = f["source"]
+            e.update(platforms=list(source["platforms"]), reader=source["reader"], min_reader=source["min_reader"])
         user_env = (f.get("auth") or {}).get("user_env")
         if user_env:
             e["user_env"] = user_env
@@ -736,6 +805,16 @@ def sandbox_capabilities(f):
 def integration_capabilities(kind, f):
     """What an integration can do, read from its file, as for a sandbox
     provider."""
+    if kind == "import":
+        # Read on this machine: nothing to authenticate, nothing to supply.
+        return {
+            "operations": [],
+            "needs": [],
+            "detect": sorted(k for k, v in (f.get("detect") or {}).items() if v),
+            "detect_on": {k: list(v) for k, v in (f.get("detect") or {}).items() if v},
+            "states": [],
+            "follow": False,
+        }
     auth = f.get("auth") or {}
     if not auth and f.get("auth_header"):
         # The key sent as a sandbox file sends it, which the format takes too.
