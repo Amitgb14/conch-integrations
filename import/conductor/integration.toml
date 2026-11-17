@@ -1,0 +1,18 @@
+format = 3
+kind = "import"
+name = "conductor"
+label = "Conductor"
+docs = "https://www.conductor.build/docs"
+adapted_by = "claude"
+adapted = "2026-11-16"
+note = "Conductor's conversations and workspaces, from its own database on this Mac. Conductor Cloud workspaces must be moved to the Mac in Conductor first."
+
+[source]
+platforms = ["darwin"]
+store = "sqlite"
+path = "~/Library/Application Support/com.conductor.app/conductor.db"
+reader = "conductor"          # the reader in conch that understands it
+min_reader = 1                # the reader version this file was checked with
+
+[detect]
+files = ["~/Library/Application Support/com.conductor.app/conductor.db"]
