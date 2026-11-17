@@ -4,5 +4,6 @@
   {"kind": "tickets", "label": "Ticket trackers", "about": "where the work is written down"},
   {"kind": "sandbox", "label": "Sandboxes", "about": "machines in the cloud for agents"},
   {"kind": "deploy", "label": "Deploy previews", "about": "where a branch is built and shown, and released to production"},
-  {"kind": "notify", "label": "Notifications", "about": "where conch says an agent is waiting"}
+  {"kind": "notify", "label": "Notifications", "about": "where conch says an agent is waiting"},
+  {"kind": "import", "label": "Import", "about": "other apps whose conversations conch can bring in"}
 ]
