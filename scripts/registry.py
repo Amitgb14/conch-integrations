@@ -20,8 +20,9 @@ everybody's key, and needs a maintainer's label.
 A sandbox provider with no plain-ssh way in is still described, its API
 in full and its [ssh] left out, with "enabled": false in meta.json. conch
 cloud will reach such sandboxes through a public URL; until a conch can,
-both indexes list them under "disabled", apart from the providers conch
-offers.
+they are checked here but hidden from what is published: no index, legacy
+or not, and no page lists them, so no conch shows one it cannot reach.
+Both indexes keep an empty "disabled", which conches read.
 """
 
 import base64
@@ -556,11 +557,14 @@ def build(out):
     (out / "providers").mkdir(parents=True, exist_ok=True)
     (out / "integrations").mkdir(parents=True, exist_ok=True)
     (out / "legacy" / "providers").mkdir(parents=True, exist_ok=True)
-    legacy, entries, legacy_off, off = [], [], [], []
+    legacy, entries = [], []
     for folder in folders():
         f, meta, problems = load(folder)
         if problems:
             raise SystemExit("\n".join(problems))
+        if not enabled(meta):
+            # No [ssh] yet: hidden, so no conch shows one it cannot reach.
+            continue
         raw = (folder / "provider.toml").read_bytes()
         (out / "providers" / f"{folder.name}.toml").write_bytes(raw)
         legacy_too = f.get("format", 1) in LEGACY_FORMATS
@@ -593,16 +597,9 @@ def build(out):
             path = f"icons/{folder.name}{pic.suffix}"
             (out / path).write_bytes(data)
             new.update(icon=path, icon_sha256=hashlib.sha256(data).hexdigest())
-        if enabled(meta):
-            if legacy_too:
-                legacy.append(old)
-            entries.append(new)
-        else:
-            # Off: listed apart, so no conch offers one it cannot reach.
-            if legacy_too:
-                legacy_off.append({**old, "enabled": False})
-            # Why, said rather than assumed: today the only reason is ssh.
-            off.append({**new, "enabled": False, "tier": "off", "why": "no ssh yet"})
+        if legacy_too:
+            legacy.append(old)
+        entries.append(new)
     for kind, folder in integration_folders():
         f, meta, problems = load_integration(kind, folder)
         if problems:
@@ -651,9 +648,9 @@ def build(out):
     for schema in sorted(SCHEMAS.glob("*.schema.json")):
         (out / "schema" / schema.name).write_bytes(schema.read_bytes())
     data = (json.dumps({"format": 2, "capabilities_version": CAPABILITIES_VERSION, "kinds": kinds_index(),
-                        "entries": entries, "disabled": off}, indent=2) + "\n").encode()
+                        "entries": entries, "disabled": []}, indent=2) + "\n").encode()
     (out / "index.json").write_bytes(data)
-    (out / "legacy" / "index.json").write_text(json.dumps({"format": 1, "providers": legacy, "disabled": legacy_off}, indent=2) + "\n")
+    (out / "legacy" / "index.json").write_text(json.dumps({"format": 1, "providers": legacy, "disabled": []}, indent=2) + "\n")
     key = os.environ.get("CONCH_REGISTRY_SIGNING_KEY", "").strip()
     if key:
         (out / "index.json.sig").write_text(sign(key, data) + "\n")
@@ -662,10 +659,6 @@ def build(out):
         f"<tr><td>{pic(e)}{html.escape(e['label'])}</td><td>{html.escape(e['kind'])}</td><td><code>{html.escape(e['name'])}</code></td>"
         f"<td>{html.escape('built into conch' if e.get('builtin') else (e['hosts']['api'] or 'your own server'))}</td><td>{'checked ' + e['checked']['date'] if e.get('checked') else 'not checked live yet'}</td></tr>"
         for e in entries)
-    rows += "".join(
-        f"\n<tr><td>{pic(e)}{html.escape(e['label'])}</td><td>sandbox</td><td><code>{html.escape(e['name'])}</code></td>"
-        f"<td>{html.escape(e['hosts']['api'])}</td><td>off: no ssh yet</td></tr>"
-        for e in off)
     (out / "index.html").write_text(f"""<!DOCTYPE html>
 <meta charset="utf-8"><title>conch integrations</title>
 <style>body{{font:15px system-ui;margin:3em auto;max-width:52em;padding:0 1em}}td,th{{padding:.3em 1em .3em 0;text-align:left}}</style>

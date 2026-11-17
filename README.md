@@ -139,9 +139,11 @@ format-4 files out.
 A provider marked **off** has an API conch can drive but no plain-ssh way
 into its sandboxes. Its file describes the API in full and leaves `[ssh]`
 out, and its `meta.json` says `"enabled": false`. conch cloud will reach
-such sandboxes through a public URL; until then both indexes list them under
-`disabled`, apart from the providers conch offers, so no conch installs one
-it cannot connect to. A setting in conch will turn them on.
+such sandboxes through a public URL; until then they are hidden: neither
+index nor the published page lists them (both indexes keep an empty
+`disabled`), so no conch shows or installs one it cannot connect to. Their
+files stay here and CI still checks them; one is published again once it
+has an `[ssh]` and `"enabled": false` comes out of its `meta.json`.
 
 ### Looked at, and why they are not here
 
