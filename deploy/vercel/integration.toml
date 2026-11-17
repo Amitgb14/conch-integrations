@@ -13,7 +13,7 @@ key_env = "VERCEL_TOKEN"
 docs = "https://vercel.com/docs/rest-api"
 adapted_by = "claude"
 adapted = "2026-11-16"
-key_help = "Vercel → Account Settings → Tokens → Create Token. Scope it to the account that owns the project; a token that can only read is enough for previews and logs."
+key_help = "Vercel → Account Settings → Tokens → Create Token, for your personal account: projects owned by a Vercel team aren't supported yet. A token that can only read is enough for previews and logs."
 note = "Reads projects in your own account. A project owned by a Vercel team needs the team named in the call (teamId), which this file cannot ask for yet. A commit is read from GitHub's metadata (meta.githubCommitSha)."
 
 [auth]
