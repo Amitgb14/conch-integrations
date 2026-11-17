@@ -41,7 +41,9 @@ jobs:
           # Integration files need a conch with conch integration; until
           # master has it, the registry's own checks above are all there is.
           if conch integration guide >/dev/null 2>&1; then
-            for f in ci/*/integration.toml tickets/*/integration.toml notify/*/integration.toml; do
+            # Every kind's folder, so a new kind (deploy, import, …) is checked
+            # by conch without anybody remembering to add it here.
+            for f in */*/integration.toml; do
               [ -e "$f" ] || continue
               conch integration check "$f" || status=1
             done
