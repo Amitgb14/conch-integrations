@@ -8,7 +8,7 @@
   "required": ["format", "kind", "name", "label", "key_env"],
   "properties": {
     "format": {"const": 3},
-    "kind": {"enum": ["ci", "tickets", "notify", "host"]},
+    "kind": {"enum": ["ci", "tickets", "notify", "deploy", "host"]},
     "name": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,30}$"},
     "label": {"type": "string", "minLength": 1},
     "api": {"type": "string", "pattern": "^https://[^/]+"},
@@ -42,7 +42,8 @@
       }
     },
     "project": {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "string"}}},
-    "states": {"type": "object", "additionalProperties": {"enum": ["pass", "fail", "pending", "canceled"]}},
+    "states": {"type": "object", "additionalProperties": {"enum": ["pass", "fail", "pending", "canceled", "ready", "building", "failed"]},
+               "description": "Every state the API documents, to conch's: a ci file's pass fail pending canceled, a deploy file's ready building failed canceled."},
     "runs": {"$ref": "#/$defs/operation"},
     "failed_log": {"$ref": "#/$defs/operation"},
     "rerun": {"$ref": "#/$defs/operation"},
@@ -53,11 +54,17 @@
     "comment": {"$ref": "#/$defs/operation"},
     "link": {"$ref": "#/$defs/operation"},
     "move": {"$ref": "#/$defs/operation"},
-    "send": {"$ref": "#/$defs/operation"}
+    "send": {"$ref": "#/$defs/operation"},
+    "previews": {"$ref": "#/$defs/operation"},
+    "redeploy": {"$ref": "#/$defs/operation"},
+    "promote": {"$ref": "#/$defs/operation"}
   },
   "anyOf": [{"required": ["api"]}, {"required": ["base_url"]}],
   "allOf": [
-    {"if": {"properties": {"kind": {"const": "ci"}}}, "then": {"required": ["runs"]}},
+    {"if": {"properties": {"kind": {"const": "ci"}}}, "then": {"required": ["runs"],
+      "properties": {"states": {"additionalProperties": {"enum": ["pass", "fail", "pending", "canceled"]}}}}},
+    {"if": {"properties": {"kind": {"const": "deploy"}}}, "then": {"required": ["previews"],
+      "properties": {"states": {"additionalProperties": {"enum": ["ready", "building", "failed", "canceled"]}}}}},
     {"if": {"properties": {"kind": {"const": "tickets"}}}, "then": {"required": ["list", "get"]}},
     {"if": {"properties": {"kind": {"const": "notify"}}}, "then": {"required": ["send"]}}
   ],
@@ -72,7 +79,8 @@
         "state": {"type": "string"}, "status": {"type": "string"}, "status_names": {"type": "string"},
         "commit": {"type": "string"}, "url": {"type": "string"}, "started": {"type": "string"},
         "finished": {"type": "string"}, "job": {"type": "string"}, "comments": {"type": "string"},
-        "comment_author": {"type": "string"}, "comment_body": {"type": "string"}
+        "comment_author": {"type": "string"}, "comment_body": {"type": "string"},
+        "environment": {"type": "string"}, "error": {"type": "string"}, "inspect": {"type": "string"}
       }
     },
     "request": {

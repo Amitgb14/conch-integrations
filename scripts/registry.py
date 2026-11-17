@@ -10,7 +10,7 @@
     registry.py conch-check [CONCH]  conch's own check of every sandbox provider
 
 A folder per kind: sandbox/NAME/{provider.toml, meta.json} for sandbox
-providers, and ci|tickets|notify/NAME/{integration.toml, meta.json} for
+providers, and ci|tickets|notify|deploy/NAME/{integration.toml, meta.json} for
 integration files (conch's format 3). conch checks each file itself;
 this checks what conch does not: the folder's shape, meta.json, that no
 secret was committed, and that a file's hosts did not move — a file sends
@@ -43,7 +43,7 @@ PROVIDERS = ROOT / "sandbox"
 # Beside the script, not under ROOT: a test that moves ROOT keeps these.
 SCHEMAS = Path(__file__).resolve().parent.parent / "schema"
 # The integration kinds this registry holds, each a folder of its own.
-KINDS = ("ci", "tickets", "notify")
+KINDS = ("ci", "tickets", "notify", "deploy")
 # The kinds are the top-level directories (sandbox/, ci/, a new one…);
 # kinds.json names them and says what each is, in the order conch lists
 # them. These are not kinds.
@@ -60,7 +60,8 @@ INTEGRATION_CHECKED_KEYS = {"date", "conch", "detail"}
 # contract for that kind calls them.
 OPERATIONS = {"ci": ("runs", "failed_log", "rerun", "stats"),
               "tickets": ("list", "mine", "get", "comment", "link", "move"),
-              "notify": ("send",)}
+              "notify": ("send",),
+              "deploy": ("previews", "failed_log", "redeploy", "promote")}
 NAME = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
 ICONS = ("icon.svg", "icon.png")
 FILES = {"provider.toml", "meta.json", "README.md", *ICONS}

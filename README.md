@@ -9,6 +9,7 @@ what it has built in, one folder per kind:
 | `ci/NAME/` | CI services: a branch's runs, a failed job's log, re-runs | `conch integration …`, `conch branch fix-ci` |
 | `tickets/NAME/` | ticket trackers | `conch integration …`, the Tickets view |
 | `notify/NAME/` | notifications | `conch integration …` |
+| `deploy/NAME/` | deploy previews: a branch's preview links, failed builds, releases | `conch integration …` (a conch with deploy previews) |
 | `host/NAME/` | code hosts (GitHub, built into conch) | the pull request view |
 
 **The folders are the kinds.** conch lists a kind for each top-level
@@ -58,6 +59,8 @@ conch integration install circleci
 | Discord | notify | not yet |
 | ntfy | notify | not yet |
 | Slack | notify | not yet |
+| Netlify | deploy | not yet |
+| Vercel | deploy | not yet |
 
 Built into conch, and listed here (`builtin.json`) so the catalog is one
 place: GitHub, GitHub Actions, GitHub Issues, Linear and Jira. They have no
@@ -66,6 +69,38 @@ file: conch's own code runs them.
 An integration's `meta.json` has a `version`, one more with every change
 and never reused, and may list `revoked` versions with the reason; conch
 stops using a revoked version and says why.
+
+## Deploy previews
+
+`deploy/NAME/integration.toml` is an integration file (format 3) of kind
+`deploy`: where a branch is built and shown. The person connects their
+account with a token; conch finds the project or site by the repository
+it builds from, shows each branch's preview link, sends a failed build's
+log to the branch's agent as it does a failed CI run, and releases a ready
+deploy to production when the person asks.
+
+| Operation | | conch asks it | placeholders |
+| --- | --- | --- | --- |
+| `previews` | required | a branch's deploys, newest first, at `{head}` when there is one | `{branch}`, `{head}`, the remote's parts |
+| `failed_log` | optional | what a failed build printed: the end goes to the agent | `{deploy}` |
+| `redeploy` | optional | build a deploy again | `{deploy}` |
+| `promote` | optional | release a deploy to production; conch asks first | `{deploy}` |
+
+A deploy's fields are a run's (`items`, `id`, `name`, `state`, `url` — the
+preview's address — `commit`, `started`, `finished`) and three more:
+`environment` (production, preview…), `error` (why it failed) and
+`inspect` (the service's page for it). `[states]` maps every state the
+API documents to `ready`, `building`, `failed` or `canceled`.
+
+| Service | Finds the project by | Release | Failed log |
+| --- | --- | --- | --- |
+| Vercel | the project linked to the repository's URL | builds the deploy again for production, as "Promote to Production" does: a preview's environment variables never reach production | the build's events |
+| Netlify | the site whose repository is the remote's path | publishes the deploy as it was built ("Publish deploy"); a deploy preview is a draft and cannot be published | the deploy's error message: Netlify's API has no build log |
+
+conch reads the kind from a release with deploy previews; until then it
+lists Deploy previews as needing a newer conch, and `conch integration
+check` does not know these files, so CI checks them with the registry's
+own checks and the schema only.
 
 ## Sandbox providers
 

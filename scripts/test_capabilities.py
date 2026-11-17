@@ -238,6 +238,20 @@ class IntegrationCapabilitiesTest(Isolated):
         # The older field stays, for conches that read it.
         self.assertEqual(e["operations"], e["capabilities"]["operations"])
 
+    def test_what_a_deploy_integration_can_do(self):
+        # A deploy file's operations are its kind's, in conch's order, and
+        # its states are a deploy's: ready, building, failed, canceled.
+        toml = ('format = 3\nkind = "deploy"\nname = "acme-deploy"\nlabel = "Acme Deploy"\napi = "https://api.acme.example"\n'
+                'key_env = "ACME_TOKEN"\n\n[auth]\ntype = "bearer"\n\n[detect]\nfiles = ["acme.json"]\n\n'
+                '[states]\nLIVE = "ready"\nBUSY = "building"\nBROKEN = "failed"\n\n'
+                '[promote]\ncall = "POST /deploys/{deploy}/publish"\n\n'
+                '[previews]\ncall = "GET /deploys?branch={branch}&sha={head}"\nitems = "deploys"\nid = "id"\nstate = "state"\nurl = "url"\n')
+        self.integration(toml, kind="deploy", name="acme-deploy")
+        e = self.entry("acme-deploy")
+        self.assertEqual(e["capabilities"]["operations"], ["previews", "promote"])
+        self.assertEqual(e["capabilities"]["states"], ["building", "failed", "ready"])
+        self.assertEqual(e["kind"], "deploy")
+
     def test_a_self_hosted_one_with_basic_auth(self):
         toml = CI.replace('api = "https://api.acme.example"', 'base_url = "ask"') \
                  .replace("[runs]", '[auth]\ntype = "basic"\nuser_env = "ACME_USER"\n\n[runs]')
@@ -334,6 +348,19 @@ class SchemaTest(unittest.TestCase):
             f = tomllib.loads(CI)
             change(f)
             self.assertFalse(integration.is_valid(f), f)
+        # A deploy file needs previews, and its states are a deploy's, not CI's.
+        deploy = tomllib.loads((registry.ROOT / "deploy" / "vercel" / "integration.toml").read_text())
+        self.assertTrue(integration.is_valid(deploy))
+        for change in (
+            lambda f: f.pop("previews"),
+            lambda f: f["states"].update(READY="pass"),
+        ):
+            f = tomllib.loads((registry.ROOT / "deploy" / "vercel" / "integration.toml").read_text())
+            change(f)
+            self.assertFalse(integration.is_valid(f), f)
+        ci = tomllib.loads(CI)
+        ci["states"] = {"ok": "ready"}
+        self.assertFalse(integration.is_valid(ci))
 
 
 if __name__ == "__main__":

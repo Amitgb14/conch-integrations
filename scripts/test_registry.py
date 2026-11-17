@@ -607,6 +607,30 @@ class RepositoryTest(unittest.TestCase):
         f = tomllib.loads((registry.PROVIDERS / "instabox" / "provider.toml").read_text())
         self.assertEqual(f["ssh"]["port"], "{reply.port}")
 
+    def test_vercel_and_netlify_release_as_their_own_dashboards_do(self):
+        # Vercel's promote endpoint only moves domains to a staged
+        # production build; a preview is promoted by building it again for
+        # production (docs/deployments/promoting-a-deployment). Netlify
+        # publishes a deploy as built (restoreSiteDeploy).
+        vercel = tomllib.loads((registry.ROOT / "deploy" / "vercel" / "integration.toml").read_text())
+        netlify = tomllib.loads((registry.ROOT / "deploy" / "netlify" / "integration.toml").read_text())
+        last = vercel["promote"]["steps"][-1]
+        self.assertEqual((last["call"], last["body"]["target"], last["body"]["deploymentId"]),
+                         ("POST /v13/deployments", "production", "{deploy}"))
+        self.assertNotIn("target", vercel["redeploy"]["steps"][-1]["body"])
+        self.assertEqual(netlify["promote"]["steps"][-1]["call"], "POST /sites/{dep.site_id}/deploys/{deploy}/restore")
+        # Each finds its project by the repository, and reads a branch at its head.
+        self.assertIn("repoUrl=https://{host}/{path}", vercel["previews"]["steps"][0]["call"])
+        self.assertIn("sha={head}", vercel["previews"]["steps"][1]["call"])
+        self.assertEqual(netlify["previews"]["steps"][0]["pick"], "[build_settings/repo_path={path}]")
+        self.assertEqual(netlify["previews"]["steps"][1]["pick"], "[*commit_ref={head}]")
+        for f in (vercel, netlify):
+            self.assertEqual(set(f["states"].values()), {"ready", "building", "failed", "canceled"}, f["name"])
+
+    def test_every_integration_here_has_its_icon(self):
+        for kind, folder in registry.integration_folders():
+            self.assertTrue({"icon.svg", "icon.png"} & {p.name for p in folder.iterdir()}, f"{kind}/{folder.name}")
+
     def test_every_provider_here_has_its_icon(self):
         for folder in registry.folders():
             self.assertTrue({"icon.svg", "icon.png"} & {p.name for p in folder.iterdir()}, folder.name)
