@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import tempfile
+import textwrap
 import tomllib
 import unittest
 from pathlib import Path
@@ -352,6 +353,27 @@ text = "."
 CI_META = {"version": 1, "adapted_by": "claude", "adapted": "2026-11-15", "docs": "https://docs.acme.example/api",
            "conch": "0.2.1", "checked": None}
 
+# An import file: where another app keeps its conversations on this
+# machine, and which of conch's readers understands them. No key, no API.
+IMPORT = '''format = 3
+kind = "import"
+name = "acme-chat"
+label = "Acme Chat"
+docs = "https://docs.acme.example/chat"
+adapted_by = "claude"
+adapted = "2026-11-16"
+
+[source]
+platforms = ["darwin"]
+store = "sqlite"
+path = "~/Library/Application Support/acme/chat.db"
+reader = "acme"
+min_reader = 1
+
+[detect]
+files = ["~/Library/Application Support/acme/chat.db"]
+'''
+
 
 class IntegrationTest(unittest.TestCase):
     def setUp(self):
@@ -520,6 +542,56 @@ class IntegrationTest(unittest.TestCase):
         (self.root / "ci" / "github" / "icon.svg").write_text(SVG)
         self.assertIn("github", self.problems())
 
+    def test_an_import_file(self):
+        # An import file reads a store on this machine: no key, no api.
+        self.write("acme-chat", toml=IMPORT, kind="import")
+        self.assertEqual(self.problems(), "")
+
+    def test_what_an_import_file_cannot_hold(self):
+        path = '"~/Library/Application Support/acme/chat.db"'
+        for change, want in (
+            (('label = "Acme Chat"', 'label = "Acme Chat"\nkey_env = "ACME_TOKEN"'), "key_env"),
+            (('label = "Acme Chat"', 'label = "Acme Chat"\napi = "https://api.acme.example"'), "api"),
+            (('path = ' + path, 'path = "/Users/someone/Library/acme/chat.db"'), "source.path"),
+            (('path = ' + path, 'path = "~/Library/../../etc/passwd"'), "source.path"),
+            (('path = ' + path, 'path = "acme/chat.db"'), "source.path"),
+            (('files = [' + path + ']', 'files = ["/etc/acme.db"]'), "detect.files"),
+            (('store = "sqlite"', 'store = "leveldb"'), "source.store"),
+            (('reader = "acme"', 'reader = "../acme"'), "source.reader"),
+            (('min_reader = 1', 'min_reader = 0'), "source.min_reader"),
+            (('platforms = ["darwin"]', 'platforms = ["amiga"]'), "source.platforms"),
+            (("[detect]", '[send]\ncall = "POST /x"\n\n[detect]'), "send"),
+            (("[detect]", '[runs]\ncall = "GET /runs"\n\n[detect]'), "runs"),
+        ):
+            with self.subTest(want=want, change=change[1]):
+                self.write("acme-chat", toml=IMPORT.replace(*change), kind="import")
+                problems = self.problems()
+                self.assertIn(f"import/acme-chat: {want}", problems)
+        # An import file without a [source] has nothing to read.
+        self.write("acme-chat", toml=IMPORT.split("[source]")[0], kind="import")
+        self.assertIn("import/acme-chat: source", self.problems())
+        # And [source] is an import file's alone.
+        self.write("acme-chat", toml=IMPORT, kind="import")
+        self.write(toml=CI + '\n[source]\nstore = "sqlite"\npath = "~/x.db"\nreader = "x"\nmin_reader = 1\n')
+        self.assertIn("ci/acme-ci: source", self.problems())
+
+    def test_build_an_import_entry(self):
+        self.write("acme-chat", toml=IMPORT, kind="import")
+        site = self.root / "site"
+        registry.build(site)
+        index = json.loads((site / "index.json").read_text())
+        e = {e["name"]: e for e in index["entries"]}["acme-chat"]
+        self.assertEqual((e["kind"], e["key_env"], e["operations"], e["hosts"], e["file"]),
+                         ("import", "", [], {"api": "", "follow": []}, "integrations/acme-chat.toml"))
+        self.assertEqual((e["platforms"], e["reader"], e["min_reader"]), (["darwin"], "acme", 1))
+        self.assertEqual(e["capabilities"]["needs"], [])
+        self.assertEqual(e["capabilities"]["operations"], [])
+        # Nothing is sent anywhere, so no auth is described.
+        self.assertNotIn("auth", e["capabilities"])
+        self.assertEqual(e["capabilities"]["detect_on"], {"files": ["~/Library/Application Support/acme/chat.db"]})
+        # Nor is it in the old index, which holds sandbox providers alone.
+        self.assertNotIn("acme-chat", (site / "legacy" / "index.json").read_text())
+
     def test_kinds_from_directories(self):
         # The kinds are the directories, in kinds.json's order with its
         # names; a directory it does not name is still a kind.
@@ -541,11 +613,85 @@ class IntegrationTest(unittest.TestCase):
         self.assertIn("kinds.json", self.problems())
 
 
+try:
+    import jsonschema
+except ImportError:
+    jsonschema = None
+
+
+@unittest.skipUnless(jsonschema, "pip install jsonschema to check files against schema/")
+class SchemaTest(unittest.TestCase):
+    """schema/integration.schema.json, which editors check files with."""
+
+    def setUp(self):
+        schema = json.loads((registry.SCHEMAS / "integration.schema.json").read_text())
+        self.validator = jsonschema.Draft202012Validator(schema)
+
+    def errors(self, toml):
+        return [(".".join(map(str, e.absolute_path)), e.message) for e in self.validator.iter_errors(tomllib.loads(toml))]
+
+    def test_every_integration_file_here(self):
+        for f in sorted(registry.ROOT.glob("*/*/integration.toml")):
+            with self.subTest(file=str(f.relative_to(registry.ROOT))):
+                self.assertEqual(self.errors(f.read_text()), [])
+
+    def test_an_import_file(self):
+        self.assertEqual(self.errors(IMPORT), [])
+        # Every other kind still needs its key and its API.
+        self.assertTrue(self.errors(CI.replace('key_env = "ACME_TOKEN"\n', "")))
+        self.assertTrue(self.errors(CI.replace('api = "https://api.acme.example"\n', "")))
+
+    def test_what_an_import_file_cannot_hold(self):
+        path = '"~/Library/Application Support/acme/chat.db"'
+        for change in (
+            ('label = "Acme Chat"', 'label = "Acme Chat"\nkey_env = "ACME_TOKEN"'),
+            ('label = "Acme Chat"', 'label = "Acme Chat"\napi = "https://api.acme.example"'),
+            ('path = ' + path, 'path = "/Users/someone/Library/acme/chat.db"'),
+            ('path = ' + path, 'path = "~/Library/../../etc/passwd"'),
+            ('files = [' + path + ']', 'files = ["/etc/acme.db"]'),
+            ('store = "sqlite"', 'store = "leveldb"'),
+            ('min_reader = 1', 'min_reader = 0'),
+            ("[detect]", '[send]\ncall = "POST /x"\n\n[detect]'),
+            ("[source]", "[nothing]"),
+        ):
+            with self.subTest(change=change[1]):
+                self.assertTrue(self.errors(IMPORT.replace(*change)))
+        # [source] belongs to an import file alone.
+        self.assertTrue(self.errors(CI + '\n[source]\nstore = "sqlite"\npath = "~/x.db"\nreader = "x"\nmin_reader = 1\n'))
+
+
 class RepositoryTest(unittest.TestCase):
     """The providers committed here, rather than ones made up for a test."""
 
     def test_the_providers_here_are_good(self):
         self.assertEqual(registry.check(), [])
+
+    def test_conductor_is_the_plans_file(self):
+        # The plan (docs/plans/import.md) gives Conductor's file in full;
+        # the one here is that, so the plan and the registry agree.
+        folder = registry.ROOT / "import" / "conductor"
+        f, meta, problems = registry.load_integration("import", folder)
+        self.assertEqual(problems, [])
+        plan = (registry.ROOT / "docs" / "plans" / "import.md").read_text()
+        block = re.search(r"```toml\n(.*?)```", plan, re.S).group(1)
+        self.assertEqual(f, tomllib.loads(textwrap.dedent(block)))
+        self.assertEqual((f["source"]["reader"], f["source"]["min_reader"], f["source"]["path"]),
+                         ("conductor", 1, "~/Library/Application Support/com.conductor.app/conductor.db"))
+        self.assertEqual((meta["version"], meta["checked"]), (1, None))
+        self.assertTrue((folder / "icon.svg").is_file())
+
+    def test_import_is_a_kind_after_notify(self):
+        kinds = [k["kind"] for k in json.loads((registry.ROOT / "kinds.json").read_text())]
+        self.assertEqual(kinds[kinds.index("notify") + 1], "import")
+
+    def test_the_readme_lists_every_integration(self):
+        # Rows of the README's integrations table: | Label | kind | live check |
+        readme = (registry.ROOT / "README.md").read_text()
+        listed = set(re.findall(r"^\| ([^|`]+?) \| ([a-z]+) \| [^|]+? \|$", readme, re.M))
+        for kind, folder in registry.integration_folders():
+            f = tomllib.loads((folder / "integration.toml").read_text())
+            self.assertIn((f.get("label") or folder.name, kind), listed, f"{kind}/{folder.name}")
+        self.assertIn("`import/NAME/`", readme)
 
     def test_instabox_sends_the_headers_its_api_requires(self):
         # Mutating POSTs and DELETEs need an Idempotency-Key, and a machine

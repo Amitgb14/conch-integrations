@@ -10,6 +10,7 @@ what it has built in, one folder per kind:
 | `tickets/NAME/` | ticket trackers | `conch integration …`, the Tickets view |
 | `notify/NAME/` | notifications | `conch integration …` |
 | `deploy/NAME/` | deploy previews: a branch's preview links, failed builds, releases | `conch integration …` (a conch with deploy previews) |
+| `import/NAME/` | other apps whose conversations conch brings in, read on this machine | Integrations → Import, `conch import` |
 | `host/NAME/` | code hosts (GitHub, built into conch) | the pull request view |
 
 **The folders are the kinds.** conch lists a kind for each top-level
@@ -29,7 +30,9 @@ Each is a file describing a service's HTTP API — which call does what,
 where the answer is in the reply, how the key is sent — with a
 `meta.json` saying who wrote it and when it was last checked live. conch
 runs any such file with one reader of its own; nothing here is code, and
-a file's key goes only to the hosts it names.
+a file's key goes only to the hosts it names. An import file is the
+exception: it has no key and no API, only where an app keeps its data on
+this machine (see [Import](#import)).
 
 The list as conch reads it is published, signed, at
 <https://amitgb14.github.io/conch-integrations/index.json>. This
@@ -61,6 +64,7 @@ conch integration install circleci
 | Slack | notify | not yet |
 | Netlify | deploy | not yet |
 | Vercel | deploy | not yet |
+| Conductor | import | not yet |
 
 Built into conch, and listed here (`builtin.json`) so the catalog is one
 place: GitHub, GitHub Actions, GitHub Issues, Linear and Jira. They have no
@@ -101,6 +105,35 @@ conch reads the kind from a release with deploy previews; until then it
 lists Deploy previews as needing a newer conch, and `conch integration
 check` does not know these files, so CI checks them with the registry's
 own checks and the schema only.
+
+## Import
+
+An import file says where another app keeps its conversations on this
+machine, so conch can bring them in — each resuming in its own agent — and
+nothing more:
+
+```toml
+[source]
+platforms = ["darwin"]
+store = "sqlite"               # sqlite, jsonl or json
+path = "~/Library/Application Support/com.conductor.app/conductor.db"
+reader = "conductor"           # the reader in conch that understands it
+min_reader = 1                 # the reader version this file was checked with
+```
+
+The store is only ever read, and only on this machine: an import file has
+no `key_env`, no `api` and no operations, so nothing in it can send
+anything anywhere. `path` (and `[detect] files`) start with `~/` and hold
+no `..`. `reader` names code in conch, the way a CI file's operations
+name conch's contract: the file cannot add a reader, only point at one. A
+conch without that reader, or with an older version of it than
+`min_reader`, shows the card as needing a newer conch. The index entry
+carries `platforms`, `reader` and `min_reader`, and its capabilities say
+`needs: []`.
+
+Conductor is the first: its conversations and workspaces, from its own
+database on a Mac. Its icon is a plain stand-in until Conductor's own mark
+replaces it.
 
 ## Sandbox providers
 
@@ -272,6 +305,8 @@ On every pull request:
   reference outside the file, or a square PNG at least 64px across; 32 KB
   at most
 - nothing that looks like a key, token or password is committed
+- an import file has no key, API or operations, its `[source]` store is
+  `sqlite`, `jsonl` or `json`, and its paths start with `~/` with no `..`
 - a provider already here keeps its API and ssh hosts. A file sends
   everybody's API key to its `api` host, so moving it is a maintainer's
   decision, given with the `host-change` label

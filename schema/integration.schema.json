@@ -2,13 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://amitgb14.github.io/conch-integrations/schema/integration.schema.json",
   "title": "conch integration file",
-  "description": "KIND/NAME/integration.toml: how conch uses a service's HTTP API for one kind of job. The format is conch's internal/integration/format.md; conch integration check is the final word.",
+  "description": "KIND/NAME/integration.toml: how conch uses a service's HTTP API for one kind of job, or, for kind import, where another app keeps its conversations on this machine. The format is conch's internal/integration/format.md; conch integration check is the final word.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["format", "kind", "name", "label", "key_env"],
+  "required": ["format", "kind", "name", "label"],
   "properties": {
     "format": {"const": 3},
-    "kind": {"enum": ["ci", "tickets", "notify", "deploy", "host"]},
+    "kind": {"enum": ["ci", "tickets", "notify", "deploy", "host", "import"]},
     "name": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,30}$"},
     "label": {"type": "string", "minLength": 1},
     "api": {"type": "string", "pattern": "^https://[^/]+"},
@@ -57,10 +57,37 @@
     "send": {"$ref": "#/$defs/operation"},
     "previews": {"$ref": "#/$defs/operation"},
     "redeploy": {"$ref": "#/$defs/operation"},
-    "promote": {"$ref": "#/$defs/operation"}
+    "promote": {"$ref": "#/$defs/operation"},
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "description": "An import file's store: read only, and only on this machine, by the reader in conch it names.",
+      "required": ["platforms", "store", "path", "reader", "min_reader"],
+      "properties": {
+        "platforms": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["darwin", "linux", "windows"]}},
+        "store": {"enum": ["sqlite", "jsonl", "json"]},
+        "path": {"$ref": "#/$defs/home_path"},
+        "reader": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,30}$", "description": "The reader in conch that understands the store: a file cannot add one, only point at one."},
+        "min_reader": {"type": "integer", "minimum": 1, "description": "The reader's version this file was checked with; an older conch shows it as needing a newer one."}
+      }
+    }
   },
-  "anyOf": [{"required": ["api"]}, {"required": ["base_url"]}],
   "allOf": [
+    {"if": {"properties": {"kind": {"const": "import"}}, "required": ["kind"]},
+     "then": {
+       "required": ["source"],
+       "not": {"anyOf": [{"required": ["key_env"]}, {"required": ["api"]}, {"required": ["base_url"]},
+                         {"required": ["auth"]}, {"required": ["auth_header"]}, {"required": ["follow_hosts"]},
+                         {"required": ["runs"]}, {"required": ["failed_log"]}, {"required": ["rerun"]}, {"required": ["stats"]},
+                         {"required": ["list"]}, {"required": ["mine"]}, {"required": ["get"]}, {"required": ["comment"]},
+                         {"required": ["link"]}, {"required": ["move"]}, {"required": ["send"]},
+                         {"required": ["previews"]}, {"required": ["redeploy"]}, {"required": ["promote"]}]},
+       "properties": {"detect": {"properties": {"files": {"type": "array", "items": {"$ref": "#/$defs/home_path"}}}}}
+     },
+     "else": {
+       "required": ["key_env"],
+       "anyOf": [{"required": ["api"]}, {"required": ["base_url"]}],
+       "not": {"required": ["source"]}
+     }},
     {"if": {"properties": {"kind": {"const": "ci"}}}, "then": {"required": ["runs"],
       "properties": {"states": {"additionalProperties": {"enum": ["pass", "fail", "pending", "canceled"]}}}}},
     {"if": {"properties": {"kind": {"const": "deploy"}}}, "then": {"required": ["previews"],
@@ -69,6 +96,8 @@
     {"if": {"properties": {"kind": {"const": "notify"}}}, "then": {"required": ["send"]}}
   ],
   "$defs": {
+    "home_path": {"type": "string", "pattern": "^~/(?!(.*/)?\\.\\.(/|$))",
+                  "description": "Under the person's home, as ~/…: never absolute to one user, never with a .. part."},
     "call": {"type": "string", "pattern": "^(GET|POST|PUT|PATCH|DELETE)( [/?].*)?$",
              "description": "\"METHOD /path\" under the API; a notify file's may be the method alone."},
     "fields": {
