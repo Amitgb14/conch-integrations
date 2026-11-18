@@ -42,7 +42,8 @@
                            {"type": "string", "pattern": "^\\{reply\\.[^}]+\\}$"}]},
         "endpoint": {"type": "string", "description": "host:port from [ssh.access]'s reply (format 4)."},
         "wait_secs": {"type": "integer", "minimum": 0},
-        "command": {"type": "string"},
+        "command": {"type": "string", "description": "An ssh command line in [ssh.access]'s reply; its host and port win when it reads (format 4)."},
+        "expires": {"type": "string", "description": "When [ssh.access]'s credential stops working, from its reply (format 4)."},
         "key": {"enum": ["account", "authorize", "none"]},
         "access": {"$ref": "#/$defs/call", "unevaluatedProperties": false},
         "authorize": {"$ref": "#/$defs/call", "unevaluatedProperties": false}
